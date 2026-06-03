@@ -1,0 +1,3 @@
+# src/combat — wind & point-of-sail, broadside gunnery, projectile/smoke effects.
+# Web port target for the Unity project's Assets/Scripts/Combat/
+# (Wind, CombatSystem). Boarding/capture was dropped in the web build.

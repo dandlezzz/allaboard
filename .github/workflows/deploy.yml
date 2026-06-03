@@ -1,0 +1,62 @@
+name: Deploy web (Vercel)
+
+# Continuous deployment for the Trafalgar web game (web/).
+#
+# This mirrors how the `abishag` repo ships to Vercel. abishag itself relies on
+# Vercel's native Git integration (no Actions). This workflow is the Actions-
+# driven equivalent for repos that prefer to deploy from CI. Pick ONE of:
+#   (A) Vercel native Git integration (no workflow needed) — see DEPLOYMENT.md
+#   (B) this workflow
+# Running both at once will produce duplicate deployments.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # The web game is the only thing deployed; the Unity project in unity/ is
+    # intentionally excluded.
+    defaults:
+      run:
+        working-directory: web
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      # Builds with the project's `npm run build` (tsc --noEmit && vite build),
+      # producing the Vercel prebuilt output from web/dist.
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel (production)
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"

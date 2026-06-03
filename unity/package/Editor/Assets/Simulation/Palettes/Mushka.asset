@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf3930ec88f1540d4bf6b40defd551ca, type: 3}
+  m_Name: Mushka
+  m_EditorClassIdentifier: 
+  m_Icons:
+  - {fileID: 11400000, guid: 67259da1ef4cf447ea308bd9e022131c, type: 2}
+  - {fileID: 11400000, guid: 53ce46f0cd1d14fdc863984d27a5c097, type: 2}
+  - {fileID: 11400000, guid: b95f65f8f84da49f3813957e16bc2e25, type: 2}
+  - {fileID: 11400000, guid: c1f95b14769b44d949c1fbe46b6f24b3, type: 2}
+  - {fileID: 11400000, guid: 3d212832848034136b25e557a2419b0a, type: 2}
+  - {fileID: 11400000, guid: 344df1a6d2c6f41c3bdcacae574d5ad2, type: 2}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Trafalgar — Age of Sail</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="game-canvas" aria-label="Trafalgar battle area"></canvas>
+
+    <div id="hud" aria-live="polite">
+      <div id="wind-indicator">
+        <div id="wind-arrow">
+          <svg viewBox="0 0 40 60" width="40" height="60" aria-hidden="true">
+            <rect x="16.5" y="22" width="7" height="32" rx="2" fill="#99d8ff" />
+            <polygon points="20,2 36,26 4,26" fill="#99d8ff" />
+          </svg>
+        </div>
+        <div id="wind-label">WIND</div>
+      </div>
+
+      <div id="fleet-british" class="fleet-status"></div>
+      <div id="fleet-franco" class="fleet-status"></div>
+
+      <div id="hint">
+        Tap a ship to select &nbsp;•&nbsp; click-hold &amp; drag to set its course &nbsp;•&nbsp;
+        ring buttons: + − sail, ● shot &nbsp;•&nbsp; tap open water to deselect
+      </div>
+
+      <div id="banner"></div>
+    </div>
+
+    <div id="dev-controls">
+      <button id="toggle-ai-button" type="button">Franco-Spanish: AI</button>
+      <button id="reset-button" type="button">Rematch</button>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

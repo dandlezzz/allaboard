@@ -1,0 +1,7 @@
+# Android WebView assets.
+#
+# - web/ is generated at build time by the copyWebAssets Gradle task from the
+#   Vite build output (../../web/dist) — do not commit it.
+# - model.tflite (the piece-tracking touch model) ships with the Board SDK
+#   bundle. Copy it here from the Board developer portal / SDK before building;
+#   it is intentionally not vendored in this repo.

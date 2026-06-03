@@ -1,0 +1,19 @@
+{
+  "name": "trafalgar-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Trafalgar — Age of Sail port built with PixiJS, with optional Board Web SDK integration.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "pixi.js": "^8.6.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vite": "^6.4.2"
+  }
+}

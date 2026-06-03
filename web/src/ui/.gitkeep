@@ -1,0 +1,3 @@
+# src/ui — the code-built HUD (wind indicator, per-ship control panel, result).
+# Web port target for the Unity project's Assets/Scripts/UI/
+# (HudController, UIFactory).

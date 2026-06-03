@@ -1,0 +1,4 @@
+# src/rendering — procedural sea, ship silhouettes, sails, smoke, indicators.
+# Web port target for the Unity project's Assets/Scripts/Rendering/
+# (MeshUtil, MaterialUtil, TextureUtil, CourseIndicator) — reimagined as
+# canvas/2D drawing for the web build.

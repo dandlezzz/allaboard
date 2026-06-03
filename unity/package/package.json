@@ -1,0 +1,30 @@
+{
+  "name": "fun.board",
+  "displayName": "Board SDK",
+  "version": "3.3.0",
+  "unity": "2021.3",
+  "description": "Build games for Board, the tabletop gaming platform with physical piece tracking. Includes APIs for touch and piece input, multiplayer sessions, save games, and player profiles.\n\nDeveloper FAQ (READ THIS FIRST): https://docs.dev.board.fun/faq\nDeveloper Docs: https://docs.dev.board.fun/\nDeveloper Portal: https://dev.board.fun/\nDeveloper Discord: https://discord.gg/KccHAYgykD",
+  "keywords": [],
+  "author": {
+    "name": "Board",
+    "email": "hello@board.fun"
+  },
+  "dependencies": {
+    "com.unity.inputsystem": "1.7.0"
+  },
+  "documentationUrl": "https://docs.dev.board.fun/",
+  "changelogUrl": "https://docs.dev.board.fun/more/changelog",
+  "licensesUrl": "https://docs.dev.board.fun/more/license",
+  "repository": {
+    "url": "git@github.com:Harris-Hill/board-unity-sdk.git",
+    "type": "git",
+    "revision": "e122f6e917766db5f6135e7789025c65c14c3a7d"
+  },
+  "samples": [
+    {
+      "displayName": "Input",
+      "description": "Sample scene illustrating how to read input from Board",
+      "path": "Samples~/Input"
+    }
+  ]
+}

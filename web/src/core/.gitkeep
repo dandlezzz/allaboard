@@ -1,0 +1,3 @@
+# src/core — game loop, GameConfig, match state, win detection.
+# Web port target for the Unity project's Assets/Scripts/Core/
+# (GameBootstrap, GameManager, SceneBuilder, GameConfig, Faction, Nav).

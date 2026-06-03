@@ -1,0 +1,11 @@
+.contact-palette-cell .unity-image {
+    border-color: #292929;
+}
+
+.contact-palette-cell.toggle-active {
+    background-color: #2B5D86;
+}
+
+.simulation-toolbar-toggle:checked {
+    background-color: #46607C;
+}

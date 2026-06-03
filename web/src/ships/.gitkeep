@@ -1,0 +1,3 @@
+# src/ships — ship model, ship classes, sail/ammo settings, factory, view.
+# Web port target for the Unity project's Assets/Scripts/Ships/
+# (Ship, ShipView, ShipFactory, ShipClassDef, SailSetting, AmmoType).

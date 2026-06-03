@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf3930ec88f1540d4bf6b40defd551ca, type: 3}
+  m_Name: SaveTheBloogs
+  m_EditorClassIdentifier: 
+  m_Icons:
+  - {fileID: 11400000, guid: 67259da1ef4cf447ea308bd9e022131c, type: 2}
+  - {fileID: 11400000, guid: 44c997aa5fcc24d1d9b30d3b5a1f778b, type: 2}
+  - {fileID: 11400000, guid: ee90049f14a2c4c3db7bbeeb15408cbd, type: 2}
+  - {fileID: 11400000, guid: 4375a7904353d4edf9e4eafa9c6a2987, type: 2}
+  - {fileID: 11400000, guid: 7aa9577921f5543458122fc15cd0a99d, type: 2}
