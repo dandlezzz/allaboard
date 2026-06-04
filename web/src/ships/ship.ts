@@ -123,6 +123,21 @@ export class Ship {
     this.targetHeadingDeg = normalize360(headingDeg);
   }
 
+  /** Nudges the ship's world position by `delta` (used by the soft-collision
+   *  separation pass to keep hulls from overlapping/stacking). */
+  nudgePosition(delta: Vec2): void {
+    this.position = add(this.position, delta);
+  }
+
+  /** Damps forward speed toward a stop on hull contact. `retain` in [0,1] is the
+   *  fraction of current speed kept — used by the collision pass so a ship
+   *  driving into another hull comes to a gentle stop against it (retain→0 for
+   *  head-on contact) while a glancing contact keeps grinding alongside
+   *  (retain→1). Never increases speed. */
+  applyContactStop(retain: number): void {
+    this.speed *= clamp01(retain);
+  }
+
   cycleSail(): void {
     this.sail = nextSail(this.sail);
   }

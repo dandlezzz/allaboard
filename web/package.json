@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pack:board": "npm run build && npx @board.fun/web-pack dist",
+    "deploy:board": "../scripts/deploy_board_web.sh --launch"
   },
   "dependencies": {
     "pixi.js": "^8.6.6"

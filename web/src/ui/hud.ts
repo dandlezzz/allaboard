@@ -6,6 +6,7 @@
 import { Faction, accentCss, displayName } from "../core/faction";
 import { normalize360 } from "../core/nav";
 import { roundToInt } from "../core/mathf";
+import { AIPersona } from "../ai/fleetAI";
 import type { Ship } from "../ships/ship";
 import type { Wind } from "../combat/wind";
 
@@ -24,11 +25,33 @@ export class Hud {
   private readonly toggleButton = el<HTMLButtonElement>("toggle-ai-button");
   private readonly resetButton = el<HTMLButtonElement>("reset-button");
 
-  constructor(onToggleSecondPlayer: () => void, onReset: () => void) {
+  // Persona buttons: each starts a fresh game vs that AI; the active one is
+  // highlighted to show the currently-selected opponent.
+  private readonly personaButtons: ReadonlyArray<{ persona: AIPersona; button: HTMLButtonElement }> = [
+    { persona: AIPersona.Standard, button: el<HTMLButtonElement>("persona-standard") },
+    { persona: AIPersona.Turtle, button: el<HTMLButtonElement>("persona-turtle") },
+    { persona: AIPersona.Tactician, button: el<HTMLButtonElement>("persona-giga") },
+  ];
+
+  constructor(
+    onToggleSecondPlayer: () => void,
+    onReset: () => void,
+    onSelectPersona: (persona: AIPersona) => void,
+  ) {
     this.fleetBritish.style.color = accentCss(Faction.British);
     this.fleetFranco.style.color = accentCss(Faction.FrancoSpanish);
     this.toggleButton.addEventListener("click", onToggleSecondPlayer);
     this.resetButton.addEventListener("click", onReset);
+    for (const { persona, button } of this.personaButtons) {
+      button.addEventListener("click", () => onSelectPersona(persona));
+    }
+  }
+
+  /** Highlights the button for the currently-selected opponent persona. */
+  setActivePersona(persona: AIPersona): void {
+    for (const entry of this.personaButtons) {
+      entry.button.classList.toggle("active", entry.persona === persona);
+    }
   }
 
   setSecondPlayerMode(secondPlayerIsHuman: boolean): void {

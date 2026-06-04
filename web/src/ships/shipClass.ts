@@ -45,7 +45,7 @@ export function shipStats(shipClass: ShipClass): ShipStats {
       return {
         shipClass: ShipClass.Frigate,
         displayName: "Frigate",
-        gunsPerBroadside: 4,
+        gunsPerBroadside: 8,
         chaseGuns: 2,
         maxHull: 70,
         maxRigging: 60,
@@ -61,7 +61,7 @@ export function shipStats(shipClass: ShipClass): ShipStats {
       return {
         shipClass: ShipClass.ThirdRate,
         displayName: "Third Rate (74)",
-        gunsPerBroadside: 6,
+        gunsPerBroadside: 20,
         chaseGuns: 2,
         maxHull: 130,
         maxRigging: 90,
@@ -77,7 +77,7 @@ export function shipStats(shipClass: ShipClass): ShipStats {
       return {
         shipClass: ShipClass.FirstRate,
         displayName: "First Rate (100+)",
-        gunsPerBroadside: 8,
+        gunsPerBroadside: 32,
         chaseGuns: 2,
         maxHull: 190,
         maxRigging: 120,

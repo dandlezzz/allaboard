@@ -35,8 +35,6 @@ export enum ShipControl {
   None = 0,
   Port,
   Starboard,
-  SailUp,
-  SailDown,
   AmmoCycle,
 }
 
@@ -53,7 +51,6 @@ const C_STEP = 0xad8451;
 const C_GRATING = 0x3f2c18;
 const C_SAIL = 0xefe7d4;
 const C_ICON = 0xf5f7ff;
-const C_SPEED_ON = 0x8cd9ff;
 const C_BAR_BG = 0x0d0d12;
 const C_BAR_HULL = 0xd94033;
 const C_BAR_RIG = 0x59cc66;
@@ -104,7 +101,12 @@ export class ShipView implements ShipViewHooks {
   private sailWidth: number[] = [];
   private sailDepth: number[] = [];
 
-  private selectionGfx = new Graphics();
+  // Command bubble: a distinct glowing ring + translucent disc drawn around the
+  // ship the Baton of Command currently commands (replaces the old selection
+  // ring). Toggled by setCommanded; pulses gently while active.
+  private commandGfx = new Graphics();
+  private commanded = false;
+  private commandPulse = 0;
 
   private controlsContainer = new Container();
   private controlButtons: ControlButton[] = [];
@@ -112,28 +114,37 @@ export class ShipView implements ShipViewHooks {
   private ammoIconBtnR = 0;
   private buttonHitRadius = 0;
 
-  // Always-visible shot-type badge (icon + toggle), shown on every ship.
+  // Command controls (sail + ammo toggles): shown ONLY on the commanded ship as
+  // part of its command bubble (toggled by setCommanded), not on every ship.
+  private commandControls = new Container();
+
+  // Shot-type toggle (icon), one of the command controls.
   private ammoBadge = new Container();
   private ammoBadgeGfx = new Graphics();
   private ammoBadgeR = 0;
 
-  // Sail-setting indicator: a non-interactive badge between the +/- buttons
-  // (shown with the controls, i.e. when selected). Glyph redrawn only on change.
+  // Sail-SETTING toggle (the billow glyph), one of the command controls. Hit-
+  // tested via sailBadgeHit when this ship is the commanded one. Glyph redrawn
+  // only on change.
+  private sailBadge = new Container();
   private sailIconGfx = new Graphics();
   private sailIconR = 0;
+  private sailBadgeR = 0;
   private lastSail: SailSetting = -1 as SailSetting;
 
-  // In-irons warning badge: rides above the health bars (north-up), shown for
-  // any ship sitting in the no-go zone. Built once; toggled by visibility.
-  private inIronsBadge = new Container();
+  // Sailing-quality indicator (LEFT slot): a colour-coded point-of-sail gauge —
+  // green when sailing well (Beam/Broad Reach, Running), amber when Close-Hauled,
+  // red when In Irons (the no-go state, folded in here in place of the old
+  // separate in-irons badge). Informational only (non-interactive). Redrawn only
+  // when its state/fill bucket changes (no per-frame allocation).
+  private qualityGfx = new Graphics();
+  private qualityR = 0;
+  private lastQualityBucket = -1;
 
   private statusBars = new Container();
   private statusLift = 0;
   private hullBar!: { fill: Graphics; width: number };
   private riggingBar!: { fill: Graphics; width: number };
-  // Small off-hull speed indicator (a tiny bar below the health bars), replacing
-  // the old circular speed-gauge ring.
-  private speedBar!: { fill: Graphics; width: number };
 
   private lastAmmo: AmmoType = -1 as AmmoType;
   private hitFlash = 0;
@@ -150,7 +161,7 @@ export class ShipView implements ShipViewHooks {
     // Z-order: flat-on-sea rings/controls beneath the hull, then the hull
     // (textured sprite or procedural layers), then faction stripe + stern
     // pennant, with status bars on top.
-    this.container.addChild(this.selectionGfx);
+    this.container.addChild(this.commandGfx);
     this.container.addChild(this.controlsContainer);
 
     if (texture) {
@@ -190,16 +201,18 @@ export class ShipView implements ShipViewHooks {
     this.container.addChild(this.statusBars);
 
     this.buildFlag(ship.stats);
-    this.buildSelectionRing(ship.stats);
+    this.buildCommandBubble(ship.stats);
     this.buildControlButtons(ship.stats);
     this.buildStatusBars(ship.stats);
+    this.buildSailQualityBadge(ship.stats);
+    // Command controls (sail + ammo) live in their own container, shown only on
+    // the commanded ship; the quality gauge + health bars are always visible.
+    this.statusBars.addChild(this.commandControls);
     this.buildSailBadge(ship.stats);
     this.buildAmmoBadge(ship.stats);
-    this.buildSpeedIndicator(ship.stats);
-    this.buildInIronsBadge(ship.stats);
 
     this.applyFactionColors();
-    this.setSelected(false, Faction.Neutral);
+    this.setCommanded(false, Faction.Neutral);
 
     this.syncTransform();
     renderer.shipsLayer.addChild(this.container);
@@ -404,71 +417,34 @@ export class ShipView implements ShipViewHooks {
       .stroke({ width: Math.max(1.5, len * 0.02), color, alpha: 0.95 });
   }
 
-  private buildSelectionRing(stats: ShipStats): void {
-    const r = Math.max(stats.length, stats.beam) * 0.7;
-    const band = 0.6 * Config.ShipScale;
-    this.selectionGfx
-      .circle(0, 0, r + band / 2)
-      .stroke({ width: band, color: 0xffffff });
-    this.selectionGfx.visible = false;
+  private buildCommandBubble(stats: ShipStats): void {
+    const r = Math.max(stats.length, stats.beam) * 0.78;
+    const band = 0.7 * Config.ShipScale;
+    // A translucent glow disc + a bright ring (tinted to the faction in
+    // setCommanded). Drawn beneath the hull so the hull reads clearly on top.
+    this.commandGfx.circle(0, 0, r).fill({ color: 0xffffff, alpha: 0.12 });
+    this.commandGfx.circle(0, 0, r + band / 2).stroke({ width: band, color: 0xffffff });
+    this.commandGfx.visible = false;
   }
 
   // ---- Control buttons ---------------------------------------------------
 
-  private buildControlButtons(stats: ShipStats): void {
+  private buildControlButtons(_stats: ShipStats): void {
+    // No selected-only ring buttons remain: course is set by click-hold-drag, and
+    // both sail and shot are always-present, directly-tappable badges
+    // (buildSailBadge / buildAmmoBadge) that work without selecting the ship. The
+    // controls container + hit-test machinery are kept (harmless, no buttons) so
+    // the rest of the selection plumbing stays untouched.
     this.controlsContainer.visible = false;
-    const len = stats.length;
-    const r = len * 0.92;
-    const btnR = len * 0.16;
-    this.buttonHitRadius = btnR * 1.15;
-
-    // Course is set by click-hold-drag (see Game input). Sail +/- sit fore on
-    // each bow quarter. The shot toggle is an always-present badge (buildAmmoBadge),
-    // not a selected-only ring button.
-    this.addControl(ShipControl.SailUp, 35, r, btnR, 0x38754d);
-    this.addControl(ShipControl.SailDown, 325, r, btnR, 0x705738);
   }
 
   /**
-   * Draws the current sail plan as a mast + billowed canvas whose size shrinks
-   * with less sail; Heave To shows a furled mast with a red X. Redrawn only when
-   * the setting changes (no per-frame allocation).
+   * Draws the sail-SETTING glyph (mast + billowed canvas whose size shrinks with
+   * less sail; Heave To shows a furled mast with a red X) into the always-visible
+   * badge. Redrawn only when the setting changes (no per-frame allocation).
    */
   private drawSailIcon(setting: SailSetting): void {
-    const g = this.sailIconGfx;
-    const r = this.sailIconR;
-    g.clear();
-
-    // Mast (vertical; the glyph is kept north-up via counter-rotation).
-    g.moveTo(0, -r * 0.6).lineTo(0, r * 0.6).stroke({ width: r * 0.12, color: 0xcaa46a });
-
-    if (setting === SailSetting.HeaveTo) {
-      // Furled + stopped: a red X over the mast.
-      const x = r * 0.42;
-      g.moveTo(-x, -x).lineTo(x, x).moveTo(x, -x).lineTo(-x, x).stroke({
-        width: r * 0.14,
-        color: 0xff5555,
-      });
-      return;
-    }
-
-    // Billowed canvas bulging to the right; size encodes how much sail is set.
-    let bulge: number;
-    let h: number;
-    if (setting === SailSetting.FullSail) {
-      bulge = r * 0.72;
-      h = r * 0.55;
-    } else if (setting === SailSetting.Reefed) {
-      bulge = r * 0.45;
-      h = r * 0.45;
-    } else {
-      // Close-Reefed: minimal canvas.
-      bulge = r * 0.22;
-      h = r * 0.32;
-    }
-    g.moveTo(0, -h)
-      .quadraticCurveTo(bulge, 0, 0, h)
-      .fill({ color: 0xefe7d4 });
+    drawSailGlyph(this.sailIconGfx, this.sailIconR, setting);
   }
 
   private addControl(type: ShipControl, angleDeg: number, r: number, btnR: number, baseColor: number): void {
@@ -495,13 +471,6 @@ export class ShipView implements ShipViewHooks {
         break;
       case ShipControl.Port:
         icon.poly([-btnR * 0.5, 0, btnR * 0.4, -btnR * 0.5, btnR * 0.4, btnR * 0.5]).fill({ color: C_ICON });
-        break;
-      case ShipControl.SailUp:
-        icon.rect(-btnR * 0.55, -btnR * 0.15, btnR * 1.1, btnR * 0.3).fill({ color: C_ICON });
-        icon.rect(-btnR * 0.15, -btnR * 0.55, btnR * 0.3, btnR * 1.1).fill({ color: C_ICON });
-        break;
-      case ShipControl.SailDown:
-        icon.rect(-btnR * 0.55, -btnR * 0.15, btnR * 1.1, btnR * 0.3).fill({ color: C_ICON });
         break;
       case ShipControl.AmmoCycle:
         // The icon itself shows the loaded shot (cannonball vs bar shot) and is
@@ -602,18 +571,35 @@ export class ShipView implements ShipViewHooks {
   private buildSailBadge(stats: ShipStats): void {
     const r = stats.length * 0.12;
     this.sailIconR = r;
-
-    const group = new Container();
-    group.position.set(-stats.length * 0.5, -stats.length * 0.32);
+    this.sailBadgeR = r;
+    // Centre of the single status row: quality gauge (left) · sail toggle
+    // (centre) · ammo toggle (right). The ammo badge sits 0.5·len to the right,
+    // wider than the summed ~0.38·len tap radii, so the two clickable circles
+    // never overlap.
+    this.sailBadge.position.set(0, -stats.length * 0.32);
 
     const disc = new Graphics();
     disc.circle(0, 0, r).fill({ color: 0x24435e, alpha: 0.85 });
-    group.addChild(disc);
-    group.addChild(this.sailIconGfx);
-    this.statusBars.addChild(group);
+    this.sailBadge.addChild(disc);
+    this.sailBadge.addChild(this.sailIconGfx);
+    this.commandControls.addChild(this.sailBadge);
 
     this.drawSailIcon(this.ship.sail);
     this.lastSail = this.ship.sail;
+  }
+
+  /**
+   * Tests a world-sea point against this ship's always-present sail badge —
+   * identical approach to {@link ammoBadgeHit}: recover the badge's world centre
+   * via toGlobal → screenToWorld (DPR-safe) and compare against its radius. Lets
+   * the sail plan be cycled by tapping the badge on any human ship, no selection
+   * required.
+   */
+  sailBadgeHit(worldPoint: Vec2): boolean {
+    if (!this.ship.isAlive || !this.commanded) return false;
+    const g = this.sailBadge.toGlobal({ x: 0, y: 0 });
+    const world = this.renderer.screenToWorld(g.x, g.y);
+    return distance(worldPoint, world) <= this.sailBadgeR * 1.6;
   }
 
   /**
@@ -624,13 +610,16 @@ export class ShipView implements ShipViewHooks {
   private buildAmmoBadge(stats: ShipStats): void {
     const r = stats.length * 0.12;
     this.ammoBadgeR = r;
-    this.ammoBadge.position.set(-stats.length * 0.5, -stats.length * 0.6);
+    // Right end of the single status row (sail toggle is at centre, 0.5·len away
+    // — wider than the summed ~0.38·len tap radii — so the two tap circles can't
+    // overlap).
+    this.ammoBadge.position.set(stats.length * 0.5, -stats.length * 0.32);
 
     const disc = new Graphics();
     disc.circle(0, 0, r).fill({ color: 0x2a2433, alpha: 0.85 });
     this.ammoBadge.addChild(disc);
     this.ammoBadge.addChild(this.ammoBadgeGfx);
-    this.statusBars.addChild(this.ammoBadge);
+    this.commandControls.addChild(this.ammoBadge);
 
     this.drawAmmoBadge(this.ship.ammo);
   }
@@ -656,65 +645,73 @@ export class ShipView implements ShipViewHooks {
    * recovered via toGlobal → screenToWorld (DPR-safe, same path as the pointer).
    */
   ammoBadgeHit(worldPoint: Vec2): boolean {
-    if (!this.ship.isAlive) return false;
+    if (!this.ship.isAlive || !this.commanded) return false;
     const g = this.ammoBadge.toGlobal({ x: 0, y: 0 });
     const world = this.renderer.screenToWorld(g.x, g.y);
     return distance(worldPoint, world) <= this.ammoBadgeR * 1.6;
   }
 
   /**
-   * Small off-hull speed indicator: a tiny bar beside the sail badge (above the
-   * health bars), filled by current-speed fraction. Replaces the circular speed
-   * gauge; updated via scale (no per-frame allocation).
+   * Sailing-quality gauge (LEFT slot): a colour-coded point-of-sail dial on a
+   * dark roundel that shows how well the ship is sailing its current heading
+   * relative to the wind. The arc fills further and shifts colour with quality —
+   * green (Beam/Broad Reach, Running), amber (Close-Hauled), red (In Irons, the
+   * old separate in-irons warning, now folded in). Informational only; parented
+   * to the north-up status group so it stays upright. Redrawn only on state
+   * change (see updateSailQuality), so there's no per-frame allocation.
    */
-  private buildSpeedIndicator(stats: ShipStats): void {
-    const width = stats.length * 0.66;
-    const thick = stats.length * 0.07;
+  private buildSailQualityBadge(stats: ShipStats): void {
+    const r = stats.length * 0.12;
+    this.qualityR = r;
+
     const group = new Container();
-    group.position.set(stats.length * 0.28, -stats.length * 0.32);
+    group.position.set(-stats.length * 0.5, -stats.length * 0.32);
 
-    const bg = new Graphics();
-    bg.rect(-width / 2, -thick / 2, width, thick).fill({ color: C_BAR_BG });
-    group.addChild(bg);
-
-    const fill = new Graphics();
-    fill.rect(-width / 2, -(thick * 0.7) / 2, width, thick * 0.7).fill({ color: C_SPEED_ON });
-    group.addChild(fill);
-
+    const disc = new Graphics();
+    disc.circle(0, 0, r).fill({ color: 0x161b22, alpha: 0.85 });
+    group.addChild(disc);
+    group.addChild(this.qualityGfx);
     this.statusBars.addChild(group);
-    this.speedBar = { fill, width };
+
+    this.drawSailQuality(2, 1);
+    this.lastQualityBucket = -1;
   }
 
   /**
-   * In-irons warning badge: a small amber luffing-sail glyph on a dark roundel,
-   * parented to the (north-up, ship-tracking) status-bar group so it sits just
-   * above the health bars without extra per-frame positioning. Toggled by
-   * visibility in updateVisuals when the ship is in the no-go zone.
+   * Draws the point-of-sail gauge: a 270° dial whose coloured arc fills by
+   * `factor` (point-of-sail speed multiplier, 0..1) and is tinted by `state`
+   * (0 = red/In Irons, 1 = amber/Close-Hauled, 2 = green/good). A centre dot in
+   * the same colour gives an at-a-glance read top-down.
    */
-  private buildInIronsBadge(stats: ShipStats): void {
-    const r = stats.length * 0.12;
+  private drawSailQuality(state: number, factor: number): void {
+    const g = this.qualityGfx;
+    const r = this.qualityR;
+    g.clear();
 
-    const disc = new Graphics();
-    disc.circle(0, 0, r).fill({ color: 0x140a02, alpha: 0.55 });
-    disc.circle(0, 0, r).stroke({ width: r * 0.14, color: 0xffb020 });
-    this.inIronsBadge.addChild(disc);
+    const col = SAIL_QUALITY_COLORS[state] ?? SAIL_QUALITY_COLORS[2];
+    const a0 = Math.PI * 0.75; // start lower-left
+    const a1 = Math.PI * 2.25; // sweep 270° round to lower-right
+    const aFill = a0 + (a1 - a0) * clamp01(factor);
 
-    const glyph = new Graphics();
-    // Mast + flapping (luffing) canvas: a zigzag streaming off the mast.
-    glyph.moveTo(0, -r * 0.55).lineTo(0, r * 0.55).stroke({ width: r * 0.13, color: 0xffd27a });
-    glyph
-      .moveTo(0, -r * 0.4)
-      .lineTo(r * 0.46, -r * 0.18)
-      .lineTo(0, r * 0.02)
-      .lineTo(r * 0.46, r * 0.24)
-      .lineTo(0, r * 0.42)
-      .stroke({ width: r * 0.11, color: 0xffd27a });
-    this.inIronsBadge.addChild(glyph);
+    // Track (unlit) then the lit portion.
+    g.arc(0, 0, r * 0.6, a0, a1).stroke({ width: r * 0.26, color: 0x0c1014, alpha: 0.9 });
+    g.arc(0, 0, r * 0.6, a0, aFill).stroke({ width: r * 0.26, color: col });
+    g.circle(0, 0, r * 0.2).fill({ color: col });
+  }
 
-    // Above the sail/speed row (local -Y is "up"/screen-up in the bar group).
-    this.inIronsBadge.position.set(0, -stats.length * 0.6);
-    this.inIronsBadge.visible = false;
-    this.statusBars.addChild(this.inIronsBadge);
+  /**
+   * Recolours/refills the sailing-quality gauge from the ship's point of sail.
+   * Colour comes from `ship.pointOfSail` (the wind model's classification) and
+   * the arc fill from the point-of-sail speed factor for the current heading.
+   * Quantized to a small bucket so the gauge is only redrawn when it changes.
+   */
+  private updateSailQuality(ship: Ship, wind: Wind): void {
+    const factor = clamp01(wind.pointOfSailFactorFor(ship.headingDeg));
+    const state = sailQualityState(ship.pointOfSail);
+    const bucket = state * 16 + Math.round(factor * 8);
+    if (bucket === this.lastQualityBucket) return;
+    this.lastQualityBucket = bucket;
+    this.drawSailQuality(state, factor);
   }
 
   private makeBar(color: number, width: number, thickness: number, zOffset: number): { fill: Graphics; width: number } {
@@ -743,10 +740,18 @@ export class ShipView implements ShipViewHooks {
     this.drawFlag(col);
   }
 
-  setSelected(selected: boolean, selector: Faction): void {
-    this.selectionGfx.visible = selected;
-    if (selected) this.selectionGfx.tint = accentColor(selector);
-    this.controlsContainer.visible = selected;
+  /** Marks this ship as the one under the Baton of Command: shows the glowing
+   *  command bubble (tinted to its faction) and its sail/ammo command controls. */
+  setCommanded(commanded: boolean, faction: Faction): void {
+    this.commanded = commanded;
+    this.commandGfx.visible = commanded;
+    if (commanded) this.commandGfx.tint = accentColor(faction);
+    this.commandControls.visible = commanded;
+    this.controlsContainer.visible = commanded;
+    if (!commanded) {
+      this.commandPulse = 0;
+      this.commandGfx.alpha = 1;
+    }
   }
 
   flashHit(): void {
@@ -763,6 +768,7 @@ export class ShipView implements ShipViewHooks {
     this.syncTransform();
     this.updateSails(ship, wind);
     this.updateStatusOverlays(ship);
+    this.updateSailQuality(ship, wind);
     this.updateControlButtons(dt);
 
     // Status bars: anchor directly above the ship (screen-up) and stay
@@ -774,9 +780,11 @@ export class ShipView implements ShipViewHooks {
     this.updateBar(this.hullBar, ship.hullFraction);
     this.updateBar(this.riggingBar, ship.riggingFraction);
 
-    // Show the in-irons badge only while the ship is in the no-go zone. (The
-    // sail badge lives in the north-up status group, so it needs no rotation.)
-    this.inIronsBadge.visible = ship.isAlive && ship.pointOfSail === "In Irons";
+    // Gentle pulse on the command bubble so the commanded ship stands out.
+    if (this.commanded) {
+      this.commandPulse += dt;
+      this.commandGfx.alpha = 0.75 + 0.25 * Math.sin(this.commandPulse * 4);
+    }
 
     // Damage smoke once the hull is hurt.
     const dmg = 1 - ship.hullFraction;
@@ -830,10 +838,6 @@ export class ShipView implements ShipViewHooks {
       this.lastSail = ship.sail;
       this.drawSailIcon(ship.sail);
     }
-
-    // Small speed bar (scaled by speed fraction — no allocation).
-    const frac = ship.stats.topSpeed > 0.01 ? clamp01(ship.speed / ship.stats.topSpeed) : 0;
-    this.updateBar(this.speedBar, frac);
   }
 
   private updateBar(bar: { fill: Graphics; width: number }, fraction: number): void {
@@ -843,7 +847,7 @@ export class ShipView implements ShipViewHooks {
   }
 
   updateSinking(t: number): void {
-    this.setSelected(false, Faction.Neutral);
+    this.setCommanded(false, Faction.Neutral);
     this.statusBars.visible = false;
     this.controlsContainer.visible = false;
     this.syncTransform();
@@ -868,6 +872,61 @@ function line(g: Graphics, from: Vec2, to: Vec2, width: number): void {
   const a = lp(from.x, from.z);
   const b = lp(to.x, to.z);
   g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width, color: C_ROPE, alpha: 0.85 });
+}
+
+// Sailing-quality colours, indexed by state: 0 = In Irons (red), 1 = Close-
+// Hauled (amber), 2 = good point of sail (green).
+const SAIL_QUALITY_COLORS = [0xff4d4d, 0xffb020, 0x4dd06a];
+
+/**
+ * Maps a wind-model point-of-sail label to a sailing-quality state:
+ *   "In Irons"     → 0 (red, stalled in the no-go zone),
+ *   "Close-Hauled" → 1 (amber, slow but moving),
+ *   everything else (Beam/Broad Reach, Running, or the initial "-") → 2 (green).
+ */
+function sailQualityState(pointOfSail: string): number {
+  if (pointOfSail === "In Irons") return 0;
+  if (pointOfSail === "Close-Hauled") return 1;
+  return 2;
+}
+
+/**
+ * Draws a sail-plan glyph into `g` (radius `r`): a mast plus a billowed canvas
+ * whose bulge/size shrinks as sail is reduced; Heave To shows a furled mast with
+ * a red X. Shared by the always-visible setting badge and the on-ship sail-cycle
+ * button so both read identically. Caller clears via this function's `g.clear()`.
+ */
+function drawSailGlyph(g: Graphics, r: number, setting: SailSetting): void {
+  g.clear();
+
+  // Mast (vertical; the glyph is kept north-up by its parent group).
+  g.moveTo(0, -r * 0.6).lineTo(0, r * 0.6).stroke({ width: r * 0.12, color: 0xcaa46a });
+
+  if (setting === SailSetting.HeaveTo) {
+    // Furled + stopped: a red X over the mast.
+    const x = r * 0.42;
+    g.moveTo(-x, -x).lineTo(x, x).moveTo(x, -x).lineTo(-x, x).stroke({
+      width: r * 0.14,
+      color: 0xff5555,
+    });
+    return;
+  }
+
+  // Billowed canvas bulging to the right; size encodes how much sail is set.
+  let bulge: number;
+  let h: number;
+  if (setting === SailSetting.FullSail) {
+    bulge = r * 0.72;
+    h = r * 0.55;
+  } else if (setting === SailSetting.Reefed) {
+    bulge = r * 0.45;
+    h = r * 0.45;
+  } else {
+    // Close-Reefed: minimal canvas.
+    bulge = r * 0.22;
+    h = r * 0.32;
+  }
+  g.moveTo(0, -h).quadraticCurveTo(bulge, 0, 0, h).fill({ color: C_SAIL });
 }
 
 function lerpColor(a: number, b: number, t: number): number {

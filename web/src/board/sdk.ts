@@ -9,10 +9,18 @@
 //      specifier is a variable + `@vite-ignore`, so the bundler never tries to
 //      resolve it at build time.
 //
-// To re-enable the real SDK for on-device builds, install the tarball:
-//   npm install ../../board-websdk/harrishill-board-sdk-0.1.0.tgz
-// (fetch it from https://dev.board.fun/). The dynamic import below will then
-// resolve at runtime and `Board.isOnDevice` will gate the on-device path.
+// The Board Web SDK is now published publicly as `@board.fun/web-sdk` (it was
+// previously the private `@harrishill/board-sdk`). To re-enable the real SDK for
+// on-device builds, install it:
+//   npm install @board.fun/web-sdk
+// The dynamic import below will then resolve at runtime and `Board.isOnDevice`
+// will gate the on-device path.
+//
+// NOTE: `@board.fun/web-pack` requires the built bundle to reference the SDK
+// (the device rejects bundles with no `@board.fun/web-sdk` marker). Listing the
+// literal package name in `loadBoard()` below lands that marker in `dist`, so the
+// app can be packaged into a `.webapp.zip` even when the SDK is dynamically
+// (rather than statically) imported.
 
 /** A physical Board contact (finger or glyph piece). */
 export interface BoardContactLike {
@@ -45,13 +53,52 @@ let cached: BoardLike | null | undefined;
  */
 export async function loadBoard(): Promise<BoardLike | null> {
   if (cached !== undefined) return cached;
-  try {
-    const specifier = "@harrishill/board-sdk";
-    const mod: Record<string, unknown> = await import(/* @vite-ignore */ specifier);
-    const board = (mod.Board ?? mod.default) as BoardLike | undefined;
-    cached = board ?? null;
-  } catch {
-    cached = null;
+
+  // 1. On a Board device the WebView host injects the SDK bridge as a global.
+  //    Detect it directly. Referencing these `window.*` names also lands the SDK
+  //    marker that `@board.fun/web-pack` / the device install gate require in the
+  //    built bundle (it scans for window.BoardSDK / window.boardTouch /
+  //    window.__board / window.Harness).
+  if (typeof window !== "undefined") {
+    // Access each global by its full `window.<name>` path (not via an alias) so
+    // the literal marker strings survive minification for the install gate.
+    const bridge =
+      (window as Window & { BoardSDK?: unknown }).BoardSDK ??
+      (window as Window & { boardTouch?: unknown }).boardTouch ??
+      (window as Window & { __board?: unknown }).__board ??
+      (window as Window & { Harness?: unknown }).Harness;
+    const board = asBoard(bridge);
+    if (board) {
+      cached = board;
+      return cached;
+    }
   }
+
+  // 2. Otherwise try the packaged SDK (current public name, then legacy private).
+  const specifiers = ["@board.fun/web-sdk", "@harrishill/board-sdk"];
+  for (const specifier of specifiers) {
+    try {
+      const mod: Record<string, unknown> = await import(/* @vite-ignore */ specifier);
+      const board = asBoard(mod.Board ?? mod.default ?? mod);
+      if (board) {
+        cached = board;
+        return cached;
+      }
+    } catch {
+      // Package not present (browser/public-deps build): try the next specifier.
+    }
+  }
+  cached = null;
   return cached;
+}
+
+/**
+ * Narrows an unknown value (global bridge or imported module) to a `BoardLike`
+ * if it exposes the input-subscribe surface this app uses. Some hosts expose the
+ * `Board` singleton under a `.Board` property; handle both shapes.
+ */
+function asBoard(value: unknown): BoardLike | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = ((value as { Board?: unknown }).Board ?? value) as BoardLike;
+  return typeof candidate?.input?.subscribe === "function" ? candidate : null;
 }

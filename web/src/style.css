@@ -134,6 +134,9 @@ body.show-banner #banner {
   bottom: 16px;
   z-index: 2;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: min(560px, calc(100vw - 32px));
   gap: 8px;
 }
 
@@ -160,6 +163,16 @@ body.board-device #dev-controls {
 
 #dev-controls button:active {
   transform: translateY(1px);
+}
+
+/* Highlight the currently-selected opponent persona. */
+#dev-controls button.active {
+  background: rgba(40, 96, 140, 0.92);
+  border-color: #9fd2ff;
+  color: #ffffff;
+  box-shadow:
+    0 0 0 1px #9fd2ff,
+    0 8px 20px rgba(0, 0, 0, 0.25);
 }
 
 @media (max-width: 700px) {

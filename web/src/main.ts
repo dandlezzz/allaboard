@@ -52,6 +52,7 @@ async function main(): Promise<void> {
   const hud = new Hud(
     () => game.toggleSecondPlayer(),
     () => game.restart(),
+    (persona) => game.selectPersona(persona),
   );
   game = new Game(renderer, hud);
   game.start();
