@@ -146,6 +146,22 @@ if [[ "$install_after_build" == true ]]; then
     log "Installing on Board: ${install_args[*]}"
     "$bc_bin" "${install_args[@]}"
     log "Done."
+
+    # Auto-commit the source tree after a SUCCESSFUL deploy so every Board deploy
+    # is captured in git history. Only reached when install (and any launch)
+    # above succeeded — `set -e` aborts the script on a failed deploy before we
+    # get here, so a failed deploy never commits. The gitignored Builds/ (the
+    # .webapp.zip) is not staged by `git add -A`. We do NOT push.
+    if git -C "$PROJECT_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+        if [[ -n "$(git -C "$PROJECT_ROOT" status --porcelain)" ]]; then
+            log "Committing source tree after successful deploy."
+            git -C "$PROJECT_ROOT" add -A
+            git -C "$PROJECT_ROOT" commit -q -m "Deploy to Board: $(date '+%Y-%m-%d %H:%M:%S %z')" \
+                && log "Committed." || log "Nothing committed (or commit skipped)."
+        else
+            log "No changes to commit after deploy."
+        fi
+    fi
 else
     log "Skipping install (no --install). Deploy manually with:"
     log "  board-connect install \"$ZIP_PATH\" --launch        # add --board <ip> if not discovered"
