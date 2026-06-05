@@ -132,15 +132,6 @@ export class ShipView implements ShipViewHooks {
   private sailBadgeR = 0;
   private lastSail: SailSetting = -1 as SailSetting;
 
-  // Sailing-quality indicator (LEFT slot): a colour-coded point-of-sail gauge —
-  // green when sailing well (Beam/Broad Reach, Running), amber when Close-Hauled,
-  // red when In Irons (the no-go state, folded in here in place of the old
-  // separate in-irons badge). Informational only (non-interactive). Redrawn only
-  // when its state/fill bucket changes (no per-frame allocation).
-  private qualityGfx = new Graphics();
-  private qualityR = 0;
-  private lastQualityBucket = -1;
-
   private statusBars = new Container();
   private statusLift = 0;
   private hullBar!: { fill: Graphics; width: number };
@@ -204,9 +195,8 @@ export class ShipView implements ShipViewHooks {
     this.buildCommandBubble(ship.stats);
     this.buildControlButtons(ship.stats);
     this.buildStatusBars(ship.stats);
-    this.buildSailQualityBadge(ship.stats);
     // Command controls (sail + ammo) live in their own container, shown only on
-    // the commanded ship; the quality gauge + health bars are always visible.
+    // the commanded ship; the health bars are always visible.
     this.statusBars.addChild(this.commandControls);
     this.buildSailBadge(ship.stats);
     this.buildAmmoBadge(ship.stats);
@@ -651,69 +641,6 @@ export class ShipView implements ShipViewHooks {
     return distance(worldPoint, world) <= this.ammoBadgeR * 1.6;
   }
 
-  /**
-   * Sailing-quality gauge (LEFT slot): a colour-coded point-of-sail dial on a
-   * dark roundel that shows how well the ship is sailing its current heading
-   * relative to the wind. The arc fills further and shifts colour with quality —
-   * green (Beam/Broad Reach, Running), amber (Close-Hauled), red (In Irons, the
-   * old separate in-irons warning, now folded in). Informational only; parented
-   * to the north-up status group so it stays upright. Redrawn only on state
-   * change (see updateSailQuality), so there's no per-frame allocation.
-   */
-  private buildSailQualityBadge(stats: ShipStats): void {
-    const r = stats.length * 0.12;
-    this.qualityR = r;
-
-    const group = new Container();
-    group.position.set(-stats.length * 0.5, -stats.length * 0.32);
-
-    const disc = new Graphics();
-    disc.circle(0, 0, r).fill({ color: 0x161b22, alpha: 0.85 });
-    group.addChild(disc);
-    group.addChild(this.qualityGfx);
-    this.statusBars.addChild(group);
-
-    this.drawSailQuality(2, 1);
-    this.lastQualityBucket = -1;
-  }
-
-  /**
-   * Draws the point-of-sail gauge: a 270° dial whose coloured arc fills by
-   * `factor` (point-of-sail speed multiplier, 0..1) and is tinted by `state`
-   * (0 = red/In Irons, 1 = amber/Close-Hauled, 2 = green/good). A centre dot in
-   * the same colour gives an at-a-glance read top-down.
-   */
-  private drawSailQuality(state: number, factor: number): void {
-    const g = this.qualityGfx;
-    const r = this.qualityR;
-    g.clear();
-
-    const col = SAIL_QUALITY_COLORS[state] ?? SAIL_QUALITY_COLORS[2];
-    const a0 = Math.PI * 0.75; // start lower-left
-    const a1 = Math.PI * 2.25; // sweep 270° round to lower-right
-    const aFill = a0 + (a1 - a0) * clamp01(factor);
-
-    // Track (unlit) then the lit portion.
-    g.arc(0, 0, r * 0.6, a0, a1).stroke({ width: r * 0.26, color: 0x0c1014, alpha: 0.9 });
-    g.arc(0, 0, r * 0.6, a0, aFill).stroke({ width: r * 0.26, color: col });
-    g.circle(0, 0, r * 0.2).fill({ color: col });
-  }
-
-  /**
-   * Recolours/refills the sailing-quality gauge from the ship's point of sail.
-   * Colour comes from `ship.pointOfSail` (the wind model's classification) and
-   * the arc fill from the point-of-sail speed factor for the current heading.
-   * Quantized to a small bucket so the gauge is only redrawn when it changes.
-   */
-  private updateSailQuality(ship: Ship, wind: Wind): void {
-    const factor = clamp01(wind.pointOfSailFactorFor(ship.headingDeg));
-    const state = sailQualityState(ship.pointOfSail);
-    const bucket = state * 16 + Math.round(factor * 8);
-    if (bucket === this.lastQualityBucket) return;
-    this.lastQualityBucket = bucket;
-    this.drawSailQuality(state, factor);
-  }
-
   private makeBar(color: number, width: number, thickness: number, zOffset: number): { fill: Graphics; width: number } {
     // Higher z (further forward / "up" on screen) → more negative local y.
     const y = -zOffset;
@@ -771,7 +698,6 @@ export class ShipView implements ShipViewHooks {
     this.syncTransform();
     this.updateSails(ship, wind);
     this.updateStatusOverlays(ship);
-    this.updateSailQuality(ship, wind);
     this.updateControlButtons(dt);
 
     // Status bars: anchor directly above the ship (screen-up) and stay
@@ -875,22 +801,6 @@ function line(g: Graphics, from: Vec2, to: Vec2, width: number): void {
   const a = lp(from.x, from.z);
   const b = lp(to.x, to.z);
   g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width, color: C_ROPE, alpha: 0.85 });
-}
-
-// Sailing-quality colours, indexed by state: 0 = In Irons (red), 1 = Close-
-// Hauled (amber), 2 = good point of sail (green).
-const SAIL_QUALITY_COLORS = [0xff4d4d, 0xffb020, 0x4dd06a];
-
-/**
- * Maps a wind-model point-of-sail label to a sailing-quality state:
- *   "In Irons"     → 0 (red, stalled in the no-go zone),
- *   "Close-Hauled" → 1 (amber, slow but moving),
- *   everything else (Beam/Broad Reach, Running, or the initial "-") → 2 (green).
- */
-function sailQualityState(pointOfSail: string): number {
-  if (pointOfSail === "In Irons") return 0;
-  if (pointOfSail === "Close-Hauled") return 1;
-  return 2;
 }
 
 /**
