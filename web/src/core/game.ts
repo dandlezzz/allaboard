@@ -5,7 +5,7 @@
 
 import * as Config from "./config";
 import { Faction, ControlMode, accentColor, displayName } from "./faction";
-import { normalize360, headingToVector, vectorToHeading, angleDifference, signedDelta } from "./nav";
+import { normalize360, headingToVector, vectorToHeading, angleDifference } from "./nav";
 import { rangeFloat, seed } from "./rng";
 import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
 import { Wind, pointOfSailColor } from "../combat/wind";
@@ -119,19 +119,18 @@ function closestSegmentSegment(
 }
 
 /**
- * A live rotate-to-steer session. We track the baton's CUMULATIVE (un-wrapped)
- * net rotation since the baseline by summing small per-frame signed increments
- * (`prevDeg` is last frame's angle, `cumDelta` the running total). Headings are
- * driven RELATIVELY as baseline + cumDelta (formation-preserving), so placement
- * (cumDelta 0) changes nothing. When |cumDelta| reaches a full turn (≥ 360°) we
- * snap ALL commanded ships to the baton's absolute heading (converge a scattered
- * fleet) and re-baseline. `lastAppliedDelta` dead-bands tiny jitter on the apply.
+ * A live TOUCH-gated absolute-steer session for one side's baton. Created when a
+ * hand first touches the Piece (`isTouched`): we capture the baton's orientation
+ * at that instant (`startDeg`) and do NOT change course on the mere touch. Only
+ * once the held baton is rotated past a small dead-band do we begin driving the
+ * squadron — `steering` flips true and every commanded ship's ordered heading is
+ * set to the baton's ABSOLUTE orientation each frame (so a scattered fleet
+ * converges onto the one heading the held baton points at). Releasing the touch
+ * deletes the session, latching the last heading; a resting baton never steers.
  */
 interface SteerRef {
-  prevDeg: number;
-  cumDelta: number;
-  baseHeadings: Map<number, number>;
-  lastAppliedDelta: number;
+  startDeg: number;
+  steering: boolean;
 }
 
 export class Game {
@@ -163,13 +162,10 @@ export class Game {
   // tracked and lifted independently. Keyed by contactId — NEVER by glyphId (a
   // Piece *type* id). Mouse-placed batons have no entry here.
   private readonly batonContact = new Map<Faction, number>();
-  // RELATIVE rotate-to-steer session, per faction. Captured when steering begins
-  // (Piece first held): the Piece orientation at that moment plus each commanded
-  // ship's ordered heading then. As the Piece turns by Δ from `pieceDeg`, every
-  // commanded ship's heading is set to its baseline + Δ — so placing the baton
-  // (Δ = 0) changes NOTHING (ships hold their current course); only an
-  // intentional rotation turns them. Absent ⇒ not currently steering (heading
-  // latched); re-grabbing the Piece re-baselines.
+  // TOUCH-gated absolute-steer session, per faction. Created when a hand touches
+  // the Piece; only once the held baton is rotated past a dead-band does it drive
+  // the squadron to the baton's ABSOLUTE orientation (all ships converge to that
+  // heading). Absent ⇒ baton resting/released → heading is latched, course held.
   private readonly batonSteerRef = new Map<Faction, SteerRef>();
   // Whether each side's baton is currently HELD (hand on the Piece, or a mouse
   // steer-drag in progress) — drives the brighter "being commanded" highlight.
@@ -440,13 +436,12 @@ export class Game {
       this.batonPos.set(faction, { x: world.x, z: world.z });
     }
 
-    // Rotate-to-steer (RELATIVE, held-gated). While held, rotating the Piece
-    // turns the squadron by the same delta from a baseline captured when the
-    // hold began — so placement never snaps the course. Releasing ends the
-    // session (heading latches); re-grabbing re-baselines.
+    // Touch-gated ABSOLUTE steering. A resting (untouched) baton holds course; a
+    // HELD baton, once rotated past a dead-band, drives the whole squadron onto
+    // the baton's absolute orientation. Releasing latches the heading.
     this.batonHeld.set(faction, s.touched);
     if (s.touched) {
-      this.steerRelative(faction, s.orientation);
+      this.steerFromTouch(faction, s.orientation);
     } else {
       this.batonSteerRef.delete(faction);
     }
@@ -504,60 +499,27 @@ export class Game {
    * clockwise turns the fleet the same way; matches the earlier hardware fix). A
    * small dead-band on Δ ignores Piece jitter.
    */
-  private steerRelative(faction: Faction, orientationRad: number): void {
+  private steerFromTouch(faction: Faction, orientationRad: number): void {
     const orientationDeg = normalize360(orientationRad * (180 / Math.PI));
     let ref = this.batonSteerRef.get(faction);
     if (!ref) {
-      // Begin a steer session: baseline = current Piece angle + each ship's order.
-      const baseHeadings = new Map<number, number>();
-      for (const cmd of this.aliveCommanded(faction)) baseHeadings.set(cmd.id, cmd.targetHeadingDeg);
-      this.batonSteerRef.set(faction, {
-        prevDeg: orientationDeg,
-        cumDelta: 0,
-        baseHeadings,
-        lastAppliedDelta: 0,
-      });
-      return; // first frame → no change (hold current course)
-    }
-
-    // Accumulate the net (un-wrapped) rotation by summing small per-frame signed
-    // increments — so a full one-direction spin reaches ±360 while back-and-forth
-    // jitter/wiggle cancels and never false-triggers the align.
-    ref.cumDelta += signedDelta(ref.prevDeg, orientationDeg);
-    ref.prevDeg = orientationDeg;
-
-    // Full rotation (≥ 360° net): converge the whole squadron onto the baton's
-    // CURRENT absolute heading, then re-baseline so further rotation steers
-    // relatively from the now-unified course (and another full spin re-aligns).
-    if (Math.abs(ref.cumDelta) >= 360) {
-      const absHeading = normalize360(orientationDeg); // baton's absolute facing
-      const alive = this.aliveCommanded(faction);
-      for (const cmd of alive) cmd.setTargetHeading(absHeading);
-      const baseHeadings = new Map<number, number>();
-      for (const cmd of alive) baseHeadings.set(cmd.id, absHeading);
-      ref.baseHeadings = baseHeadings;
-      ref.cumDelta = 0;
-      ref.lastAppliedDelta = 0;
-      // Quick feedback that the fleet aligned.
-      const bpos = this.batonPos.get(faction);
-      if (bpos) this.renderer.spawnText(bpos, "ALIGN", 0xfff1c2);
+      // Touch just began: remember where the baton was pointing; do NOT change
+      // course on the mere touch (so placing/holding holds the current course).
+      this.batonSteerRef.set(faction, { startDeg: orientationDeg, steering: false });
       return;
     }
-
-    // Partial rotation → RELATIVE: every ship turns by the same cumDelta from its
-    // own baseline (formation preserved). Dead-band tiny jitter on the apply.
-    if (Math.abs(ref.cumDelta - ref.lastAppliedDelta) < Config.BatonSteerToleranceDeg) return;
-    ref.lastAppliedDelta = ref.cumDelta;
-    for (const cmd of this.aliveCommanded(faction)) {
-      let base = ref.baseHeadings.get(cmd.id);
-      if (base === undefined) {
-        // A ship that wasn't in the baseline (shouldn't happen mid-session) —
-        // baseline it now so it doesn't jump.
-        base = cmd.targetHeadingDeg - ref.cumDelta;
-        ref.baseHeadings.set(cmd.id, base);
-      }
-      cmd.setTargetHeading(base + ref.cumDelta);
+    if (!ref.steering) {
+      // Hold course until the held baton is rotated past the dead-band; only an
+      // intentional turn begins steering (avoids Piece jitter creeping the course).
+      if (angleDifference(orientationDeg, ref.startDeg) < Config.BatonSteerToleranceDeg) return;
+      ref.steering = true;
     }
+    // Touched + rotated → drive EVERY commanded ship onto the baton's ABSOLUTE
+    // heading: aim the held baton where the fleet should sail and a scattered
+    // squadron converges (each ship turns onto it at its own turn rate). The
+    // positive sign matches the hardware-verified rotate direction.
+    const heading = normalize360(orientationDeg);
+    for (const cmd of this.aliveCommanded(faction)) cmd.setTargetHeading(heading);
   }
 
   /**
