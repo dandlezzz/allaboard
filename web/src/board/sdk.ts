@@ -189,13 +189,21 @@ function dispatchPauseResult(json: string): void {
   try {
     raw = JSON.parse(json) as typeof raw;
   } catch {
-    return;
+    return; // malformed payload → ignore (don't throw out of the native push)
   }
   const result: BoardPauseResult = {
     action: typeof raw.action === "string" ? raw.action : "",
   };
   if (typeof raw.customButtonId === "string") result.customButtonId = raw.customButtonId;
-  pauseCallbacks.forEach((cb) => cb(result));
+  // Isolate each subscriber: a throwing callback (e.g. on an unexpected
+  // volume/audio-slider result shape) must never crash the app to the home screen.
+  pauseCallbacks.forEach((cb) => {
+    try {
+      cb(result);
+    } catch {
+      /* swallow — one bad subscriber can't take down the others or the app */
+    }
+  });
 }
 
 /**

@@ -78,16 +78,26 @@ export class PauseMenu {
   }
 
   private handleResult(result: BoardPauseResult): void {
-    if (result.action === "quit" || result.action === "save_and_quit") {
-      try {
-        this.board?.application?.quit();
-      } catch {
-        /* ignore */
+    // Tolerant of any result shape the OS sends (e.g. volume/audio-slider changes
+    // come back on every overlay dismissal): act ONLY on the two actions we know,
+    // ignore everything else, and never let a handler throw out of the native
+    // pause-result push (which would crash the app to the home screen).
+    try {
+      const action = result?.action;
+      if (action === "quit" || action === "save_and_quit") {
+        try {
+          this.board?.application?.quit();
+        } catch {
+          /* ignore */
+        }
+        return;
       }
-      return;
-    }
-    if (result.action === "custom_button" && result.customButtonId === RESTART_BUTTON_ID) {
-      this.callbacks.onRestart();
+      if (action === "custom_button" && result?.customButtonId === RESTART_BUTTON_ID) {
+        this.callbacks.onRestart();
+      }
+      // Any other action (resume / dismiss / audio-track change / unknown) → no-op.
+    } catch {
+      /* never propagate a pause-result error */
     }
   }
 }

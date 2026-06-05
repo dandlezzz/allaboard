@@ -1,21 +1,24 @@
 Trafalgar — Age of Sail · Sound effects
 =======================================
 
-cannon.ogg / cannon.mp3   — broadside / chase volley boom
-impact.ogg / impact.mp3   — cannonball hitting a hull (thud)
+cannon.ogg / cannon.mp3   — broadside / chase volley fire
+impact.ogg / impact.mp3   — cannonball landing / hull hit
 splash.ogg / splash.mp3   — near-miss water splash
 
-Source / license
-----------------
-All clips were SYNTHESIZED from scratch with FFmpeg (filtered noise + tone
-envelopes) specifically for this project. They are original work created here,
-so they are effectively public domain (CC0) — no third-party rights, no
-attribution required, and freely redistributable inside the .webapp.zip bundle.
+Sources / licenses
+------------------
+cannon  — USER-SUPPLIED recording (from cannon_fire_01.ogg), provided by the
+          project owner for use in this game. Re-encoded to mono OGG/MP3.
+impact  — USER-SUPPLIED recording (from cannonball_land0.wav), provided by the
+          project owner. Trimmed (4.3s → ~1.25s, long tail removed), normalized,
+          re-encoded to mono OGG/MP3.
+splash  — SYNTHESIZED from scratch with FFmpeg (filtered white-noise plume) —
+          original work, effectively public domain (CC0), no attribution.
 
-This was chosen deliberately: per docs/sfx-sourcing.md, downloadable CC0 packs
-either require authenticated downloads (Freesound) or had an unconfirmed license
-badge (OpenGameArt "Battle at sea"), so to guarantee a clean, attribution-free
-license we generated our own placeholders. They can be swapped for confirmed-CC0
-recordings later without any code change (same filenames in web/public/audio/).
+The user-supplied cannon/impact were provided for this project's use. The splash
+is our own generated placeholder. None require attribution and all are safe to
+redistribute inside the .webapp.zip. Any clip can be swapped later by dropping a
+replacement at the same filename in web/public/audio/ (no code change).
 
-Generated 2026-06-05 with ffmpeg 7.1.1 — mono, 22.05 kHz, OGG/Vorbis + MP3.
+Processed 2026-06-05 with ffmpeg 7.1.1 — mono, 22.05 kHz, OGG/Vorbis + MP3
+(silence-trimmed + loudnorm where applicable).

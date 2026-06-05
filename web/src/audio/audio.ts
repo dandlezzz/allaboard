@@ -93,14 +93,28 @@ class AudioEngine {
     );
   }
 
-  /** Resumes the context from a user gesture (idempotent; safe to call often). */
+  /**
+   * Resumes the context from a user gesture (idempotent; safe to call often).
+   * Fully guarded: resumes from ANY non-running, non-closed state (suspended, or
+   * the "interrupted" state some engines enter when the OS audio focus / system
+   * volume changes), and swallows both synchronous throws and promise rejections
+   * so a system audio change can never bubble an error up to crash the app.
+   */
   unlock(): void {
     this.init();
     const ctx = this.ctx;
-    if (ctx && ctx.state === "suspended") {
-      ctx.resume().catch(() => {
-        /* ignore — stays silent until a later gesture succeeds */
-      });
+    if (!ctx) return;
+    try {
+      if (ctx.state !== "running" && ctx.state !== "closed") {
+        const p = ctx.resume();
+        if (p && typeof p.catch === "function") {
+          p.catch(() => {
+            /* stays silent until a later gesture succeeds */
+          });
+        }
+      }
+    } catch {
+      /* resume threw synchronously (closed/interrupted ctx) → ignore, stay silent */
     }
   }
 
@@ -147,16 +161,25 @@ class AudioEngine {
     }
   }
 
-  /** Master volume 0..1 (future "Master" pause slider). */
+  /** Master volume 0..1 (future "Master" pause slider). Guarded: setting a gain
+   *  on a node of a closed/interrupted context must never throw out to the app. */
   setMasterVolume(v: number): void {
     this.masterVol = clamp01(v);
-    if (this.master) this.master.gain.value = this.masterVol;
+    try {
+      if (this.master) this.master.gain.value = this.masterVol;
+    } catch {
+      /* ignore */
+    }
   }
 
-  /** SFX-bus volume 0..1 (future "Cannons / SFX" pause slider). */
+  /** SFX-bus volume 0..1 (future "Cannons / SFX" pause slider). Guarded as above. */
   setSfxVolume(v: number): void {
     this.sfxVol = clamp01(v);
-    if (this.sfx) this.sfx.gain.value = this.sfxVol;
+    try {
+      if (this.sfx) this.sfx.gain.value = this.sfxVol;
+    } catch {
+      /* ignore */
+    }
   }
 }
 
