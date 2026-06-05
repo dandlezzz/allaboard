@@ -586,6 +586,10 @@ export class Game {
     const pos = this.batonPos.get(faction);
     if (alive.length === 0 || !pos) return;
     const sail = this.renderer.commandPanelLayout(pos).sail;
+    // Screen-up = more sail: a higher touch (larger world.z) maps to a higher
+    // setting. t=1 at the top of the control (Full Sail), t=0 at the bottom
+    // (Heave-To). screenToWorld already makes world.z increase as the finger
+    // rises, so this gives finger-up → Full, finger-down → Heave-To.
     const t = clamp01((world.z - (sail.z - sail.halfH)) / (2 * sail.halfH));
     const setting = Math.round(t * 3) as SailSetting; // 0..3, snap to nearest
     for (const cmd of alive) cmd.setSail(setting);

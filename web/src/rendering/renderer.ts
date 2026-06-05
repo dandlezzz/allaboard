@@ -515,17 +515,17 @@ export class Renderer {
   }
 
   /**
-   * Draws the sail control as a vertical MAST with a sail that furls/unfurls to
-   * show the trim. The yard sits at the TOP; the sail is set (dropped) DOWN the
-   * mast, its drop proportional to the setting, so reefing reads as the canvas
-   * bunching up toward the yard:
-   *   FullSail(3)    → canvas dropped nearly the whole mast (large billow, 3 reef
-   *                    bands),
-   *   Reefed(2)      → ~2/3 drop (2 bands),
-   *   CloseReefed(1) → ~1/3 drop (1 band),
-   *   HeaveTo(0)     → fully furled: a small lashed bundle at the yard, bare mast.
-   * `level` is the SailSetting ordinal 0..3. (The drag maps the touch HEIGHT to
-   * the setting — top = Full, bottom = Heave-To — in game.ts, unchanged.)
+   * Draws the sail control as a vertical MAST with a sail that is HOISTED up the
+   * mast to show the trim, so it tracks the finger: dragging up hoists more sail
+   * (the canvas rises toward the top), dragging down lowers/furls it. The boom
+   * sits at the BOTTOM; the sail rises from it to a head whose height is
+   * proportional to the setting:
+   *   FullSail(3)    → hoisted nearly the whole mast (tall billow, 3 reef bands),
+   *   Reefed(2)      → ~2/3 up (2 bands),
+   *   CloseReefed(1) → ~1/3 up (1 band),
+   *   HeaveTo(0)     → fully furled: a small bundle on the boom, bare mast above.
+   * `level` is the SailSetting ordinal 0..3, matching the touch-height mapping in
+   * game.ts (top = Full, bottom = Heave-To).
    */
   private drawSailMast(
     g: Graphics,
@@ -551,43 +551,46 @@ export class Renderer {
       alpha: 0.8,
     });
 
-    // Mast (vertical) + yard (a horizontal spar at the top).
+    // Mast (vertical) + boom (a horizontal spar at the bottom).
     const mastW = Math.max(0.12 * Config.ShipScale, hw * 0.22);
     g.rect(cx - mastW / 2, yTop, mastW, H).fill({ color: 0x6b4e2e });
-    const yardHalf = hw * 0.98;
-    g.rect(cx - yardHalf, yTop - mastW * 0.6, yardHalf * 2, mastW * 1.2).fill({ color: 0x6b4e2e });
+    const boomHalf = hw * 0.98;
+    g.rect(cx - boomHalf, yBot - mastW * 0.6, boomHalf * 2, mastW * 1.2).fill({ color: 0x6b4e2e });
 
     const frac = clampRange(level, 0, 3) / 3;
-    const headY = yTop + mastW * 0.8; // just below the yard
+    const footY = yBot - mastW * 0.8; // just above the boom
 
     if (frac <= 0.001) {
-      // Heave-To: a furled bundle lashed up at the yard; bare mast below.
-      g.roundRect(cx - hw * 0.85, headY, hw * 1.7, hw * 0.7, hw * 0.35).fill({
+      // Heave-To: a furled bundle stowed on the boom; bare mast above.
+      g.roundRect(cx - hw * 0.85, footY - hw * 0.7, hw * 1.7, hw * 0.7, hw * 0.35).fill({
         color: 0xcfc4ab,
         alpha: 0.95,
       });
       return;
     }
 
-    // Set sail: a billowed canvas hanging from the yard, longer with more sail.
-    const drop = (H - mastW) * (0.2 + 0.8 * frac);
-    const footY = headY + drop;
+    // Hoisted sail: a billowed canvas rising from the boom, taller with more sail.
+    const hoist = (H - mastW) * (0.2 + 0.8 * frac);
+    const headY = footY - hoist;
     const bulge = hw * 0.95;
-    g.moveTo(cx - hw * 0.85, headY)
-      .quadraticCurveTo(cx - bulge, (headY + footY) / 2, cx - hw * 0.62, footY)
-      .lineTo(cx + hw * 0.62, footY)
-      .quadraticCurveTo(cx + bulge, (headY + footY) / 2, cx + hw * 0.85, headY)
+    g.moveTo(cx - hw * 0.62, footY)
+      .quadraticCurveTo(cx - bulge, (headY + footY) / 2, cx - hw * 0.85, headY)
+      .lineTo(cx + hw * 0.85, headY)
+      .quadraticCurveTo(cx + bulge, (headY + footY) / 2, cx + hw * 0.62, footY)
       .closePath()
       .fill({ color: 0xefe7d4, alpha: 0.94 });
 
-    // Reef bands (horizontal seams) — more bands as more sail is set.
+    // Reef bands (horizontal seams) — more bands as more sail is hoisted.
     const bands = frac >= 0.99 ? 3 : frac >= 0.6 ? 2 : 1;
     for (let i = 1; i <= bands; i++) {
-      const y = headY + (drop * i) / (bands + 1);
+      const y = footY - (hoist * i) / (bands + 1);
       g.moveTo(cx - hw * 0.66, y)
         .lineTo(cx + hw * 0.66, y)
         .stroke({ width: 0.08 * Config.ShipScale, color: 0xbcae8e, alpha: 0.7 });
     }
+
+    // A gaff/spar at the head so the hoist level reads clearly.
+    g.rect(cx - hw * 0.95, headY - mastW * 0.45, hw * 1.9, mastW * 0.9).fill({ color: 0x6b4e2e });
   }
 
   /** Round shot (one ball) vs bar shot (two balls + bar); 0 = round, 1 = bar. */
