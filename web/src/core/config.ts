@@ -175,10 +175,11 @@ export const ShipSelectRadius = 3.5 * ShipScale;
  *  alive, human-controlled friendly ship of ONE side within this radius at
  *  placement time comes under command, so a single baton moves a whole squadron
  *  together. Deliberately large (a full fleet column is ≈ 500 units, and ships
- *  are now smaller) so the sphere gathers several ships at once; a literal 3× of
- *  the old value would exceed the arena, so it is capped to a value whose ring is
- *  still a clear sub-region of the field. */
-export const BatonCommandRadius = 15 * ShipScale;
+ *  are now smaller) so the sphere gathers several ships at once. Grown to 20×
+ *  ShipScale so the pushed-out command-control cluster (sail mast + ammo disc,
+ *  anchored BatonControlClusterRadius below the baton) sits inside the command
+ *  circle; still a clear sub-region of the field. */
+export const BatonCommandRadius = 20 * ShipScale;
 
 // ---- Baton lifecycle: rotate-to-steer, controls, mouse emulation ----
 // The Baton of Command is a Piece-centric controller: set the Piece down to take
@@ -201,8 +202,11 @@ export const BatonSteerToleranceDeg = 5;
 export const BatonRoundelHitRadius = 3.4 * ShipScale;
 
 /** How far (world units) the floating finger-trim control cluster sits from the
- *  resting baton (anchored as a ring around it, then clamped on-screen). */
-export const BatonControlClusterRadius = 7.5 * ShipScale;
+ *  resting baton (anchored as a ring around it, then clamped on-screen). Pushed
+ *  out so the sail mast + ammo disc don't crowd the baton roundel; the
+ *  command/sphere radius (BatonCommandRadius) was grown to keep them inside the
+ *  command circle. */
+export const BatonControlClusterRadius = 12 * ShipScale;
 
 /** Half the gap (world units) between the two trim buttons in the cluster. */
 export const BatonControlButtonGap = 3.8 * ShipScale;

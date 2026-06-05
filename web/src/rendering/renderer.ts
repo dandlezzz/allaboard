@@ -349,7 +349,7 @@ export class Renderer {
     const offset = Config.BatonControlClusterRadius;
     const dx = Config.BatonControlButtonGap;
     const r = Config.BatonControlButtonRadius;
-    // The sail control is a TALL vertical thermometer; the ammo control a disc.
+    // The sail control is a TALL vertical mast; the ammo control a disc.
     const thHalfW = r * 0.7;
     const thHalfH = r * 2.2;
 
@@ -370,8 +370,8 @@ export class Renderer {
   }
 
   /**
-   * Draws a GROUP command panel by each baton: a vertical sail THERMOMETER
-   * (bottom = Heave-To, top = Full Sail; filled to the current setting) and an
+   * Draws a GROUP command panel by each baton: a vertical sail MAST whose canvas
+   * furls/unfurls with the setting (bottom = Heave-To, top = Full Sail) and an
    * ammunition disc (round vs bar shot). Each controls one side's commanded
    * squadron at once.
    */
@@ -386,7 +386,7 @@ export class Renderer {
     }
     for (const panel of panels) {
       const { sail, ammo, r } = this.commandPanelLayout(panel.pos);
-      this.drawSailThermometer(g, sail, panel.sail);
+      this.drawSailMast(g, sail, panel.sail);
       this.drawPanelDisc(g, ammo, r, 0x2a2433);
       this.drawAmmoButtonGlyph(g, ammo, r, panel.ammo);
     }
@@ -515,67 +515,79 @@ export class Renderer {
   }
 
   /**
-   * Draws the vertical sail THERMOMETER: a track (bottom = Heave-To, top = Full
-   * Sail), a cream fill rising from the bottom to the current setting, faint
-   * ticks at the four discrete stops, and a knob at the current level. `level` is
-   * the SailSetting ordinal 0..3. Heave-To (empty) also shows a small red X.
+   * Draws the sail control as a vertical MAST with a sail that furls/unfurls to
+   * show the trim. The yard sits at the TOP; the sail is set (dropped) DOWN the
+   * mast, its drop proportional to the setting, so reefing reads as the canvas
+   * bunching up toward the yard:
+   *   FullSail(3)    → canvas dropped nearly the whole mast (large billow, 3 reef
+   *                    bands),
+   *   Reefed(2)      → ~2/3 drop (2 bands),
+   *   CloseReefed(1) → ~1/3 drop (1 band),
+   *   HeaveTo(0)     → fully furled: a small lashed bundle at the yard, bare mast.
+   * `level` is the SailSetting ordinal 0..3. (The drag maps the touch HEIGHT to
+   * the setting — top = Full, bottom = Heave-To — in game.ts, unchanged.)
    */
-  private drawSailThermometer(
+  private drawSailMast(
     g: Graphics,
     rect: { x: number; z: number; halfW: number; halfH: number },
     level: number,
   ): void {
     const cx = rect.x;
-    // worldLocal maps +Z (top in world) → smaller local y, so the thermometer
-    // top (Full Sail) is the smaller y; bottom (Heave-To) the larger y.
+    // worldLocal maps +Z (top in world) → smaller local y, so the control top
+    // (Full Sail) is the smaller y; the bottom (Heave-To) the larger y.
     const yTop = -(rect.z + rect.halfH);
     const yBot = -(rect.z - rect.halfH);
-    const x0 = cx - rect.halfW;
-    const w = rect.halfW * 2;
-    const h = yBot - yTop;
-    const radius = rect.halfW * 0.6;
+    const hw = rect.halfW;
+    const H = yBot - yTop;
 
-    // Track.
-    g.roundRect(x0, yTop, w, h, radius).fill({ color: 0x12283b, alpha: 0.9 });
-    g.roundRect(x0, yTop, w, h, radius).stroke({
-      width: 0.3 * Config.ShipScale,
+    // Faint backdrop so the control reads against the sea + marks the hit area.
+    g.roundRect(cx - hw * 1.25, yTop - hw * 0.5, hw * 2.5, H + hw, hw * 0.7).fill({
+      color: 0x12283b,
+      alpha: 0.5,
+    });
+    g.roundRect(cx - hw * 1.25, yTop - hw * 0.5, hw * 2.5, H + hw, hw * 0.7).stroke({
+      width: 0.22 * Config.ShipScale,
       color: 0xffe08a,
-      alpha: 0.9,
+      alpha: 0.8,
     });
 
-    // Fill from the bottom up to the current setting (0..3 → 0..1 of the height).
+    // Mast (vertical) + yard (a horizontal spar at the top).
+    const mastW = Math.max(0.12 * Config.ShipScale, hw * 0.22);
+    g.rect(cx - mastW / 2, yTop, mastW, H).fill({ color: 0x6b4e2e });
+    const yardHalf = hw * 0.98;
+    g.rect(cx - yardHalf, yTop - mastW * 0.6, yardHalf * 2, mastW * 1.2).fill({ color: 0x6b4e2e });
+
     const frac = clampRange(level, 0, 3) / 3;
-    const fillH = h * frac;
-    const knobY = yBot - fillH;
-    if (fillH > 0.5) {
-      g.roundRect(x0 + w * 0.2, knobY, w * 0.6, fillH, radius * 0.6).fill({
-        color: 0xefe7d4,
-        alpha: 0.92,
+    const headY = yTop + mastW * 0.8; // just below the yard
+
+    if (frac <= 0.001) {
+      // Heave-To: a furled bundle lashed up at the yard; bare mast below.
+      g.roundRect(cx - hw * 0.85, headY, hw * 1.7, hw * 0.7, hw * 0.35).fill({
+        color: 0xcfc4ab,
+        alpha: 0.95,
       });
-    } else {
-      // Heave-To (empty): furled — a small red X near the bottom.
-      const m = rect.halfW * 0.5;
-      const yx = yBot - rect.halfW * 0.9;
-      g.moveTo(cx - m, yx - m).lineTo(cx + m, yx + m);
-      g.moveTo(cx + m, yx - m).lineTo(cx - m, yx + m);
-      g.stroke({ width: 0.18 * Config.ShipScale, color: 0xff5555 });
+      return;
     }
 
-    // Faint ticks at each of the four discrete stops.
-    for (let i = 0; i < 4; i++) {
-      const y = yBot - (i / 3) * h;
-      g.moveTo(x0 + w * 0.14, y)
-        .lineTo(x0 + w * 0.86, y)
-        .stroke({ width: 0.1 * Config.ShipScale, color: 0xffe08a, alpha: 0.4 });
-    }
+    // Set sail: a billowed canvas hanging from the yard, longer with more sail.
+    const drop = (H - mastW) * (0.2 + 0.8 * frac);
+    const footY = headY + drop;
+    const bulge = hw * 0.95;
+    g.moveTo(cx - hw * 0.85, headY)
+      .quadraticCurveTo(cx - bulge, (headY + footY) / 2, cx - hw * 0.62, footY)
+      .lineTo(cx + hw * 0.62, footY)
+      .quadraticCurveTo(cx + bulge, (headY + footY) / 2, cx + hw * 0.85, headY)
+      .closePath()
+      .fill({ color: 0xefe7d4, alpha: 0.94 });
 
-    // Knob at the current level.
-    g.circle(cx, knobY, rect.halfW * 0.82).fill({ color: 0xfff1c2, alpha: 0.95 });
-    g.circle(cx, knobY, rect.halfW * 0.82).stroke({
-      width: 0.16 * Config.ShipScale,
-      color: 0xffe08a,
-      alpha: 0.95,
-    });
+    // Reef bands (horizontal seams) — more bands as more sail is set.
+    const bands = frac >= 0.99 ? 3 : frac >= 0.6 ? 2 : 1;
+    for (let i = 1; i <= bands; i++) {
+      const y = headY + (drop * i) / (bands + 1);
+      g.moveTo(cx - hw * 0.66, y)
+        .lineTo(cx + hw * 0.66, y)
+        .stroke({ width: 0.08 * Config.ShipScale, color: 0xbcae8e, alpha: 0.7 });
+    }
   }
 
   /** Round shot (one ball) vs bar shot (two balls + bar); 0 = round, 1 = bar. */
