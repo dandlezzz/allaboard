@@ -1,0 +1,21 @@
+Trafalgar — Age of Sail · Sound effects
+=======================================
+
+cannon.ogg / cannon.mp3   — broadside / chase volley boom
+impact.ogg / impact.mp3   — cannonball hitting a hull (thud)
+splash.ogg / splash.mp3   — near-miss water splash
+
+Source / license
+----------------
+All clips were SYNTHESIZED from scratch with FFmpeg (filtered noise + tone
+envelopes) specifically for this project. They are original work created here,
+so they are effectively public domain (CC0) — no third-party rights, no
+attribution required, and freely redistributable inside the .webapp.zip bundle.
+
+This was chosen deliberately: per docs/sfx-sourcing.md, downloadable CC0 packs
+either require authenticated downloads (Freesound) or had an unconfirmed license
+badge (OpenGameArt "Battle at sea"), so to guarantee a clean, attribution-free
+license we generated our own placeholders. They can be swapped for confirmed-CC0
+recordings later without any code change (same filenames in web/public/audio/).
+
+Generated 2026-06-05 with ffmpeg 7.1.1 — mono, 22.05 kHz, OGG/Vorbis + MP3.

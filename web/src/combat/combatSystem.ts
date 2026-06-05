@@ -52,6 +52,7 @@ export class CombatSystem {
     const rake = sternRakeMultiplier(shooter, target);
 
     shooter.notifyFired(side);
+    effects.playSound("cannon"); // ONE boom per broadside volley, never per ball
 
     const forward = shooter.forward;
     const beamOffset = shooter.stats.beam * 0.6;
@@ -71,7 +72,7 @@ export class CombatSystem {
         add(shooter.position, scale(normal, beamOffset)),
         scale(forward, lerp(zBack, zFront, t)),
       );
-      effects.spawnProjectile(origin, impactPoint(target, hit), profile.tracerColor);
+      effects.spawnProjectile(origin, impactPoint(target, hit), profile.tracerColor, hit ? "hit" : "splash");
     }
 
     // A stern-raking broadside that lands at least one ball gets a "RAKE" popup
@@ -103,6 +104,7 @@ export class CombatSystem {
     const rake = sternRakeMultiplier(shooter, target);
 
     shooter.notifyChaseFired(bow);
+    effects.playSound("cannon"); // one boom per chase volley
 
     const right = shooter.right;
     const reach = shooter.stats.length * 0.45;
@@ -121,7 +123,7 @@ export class CombatSystem {
         add(shooter.position, scale(normal, reach)),
         scale(right, lateral),
       );
-      effects.spawnProjectile(origin, impactPoint(target, hit), profile.tracerColor);
+      effects.spawnProjectile(origin, impactPoint(target, hit), profile.tracerColor, hit ? "hit" : "splash");
     }
   }
 }
