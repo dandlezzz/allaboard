@@ -24,8 +24,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # The web game is the only thing deployed; the Unity project in unity/ is
-    # intentionally excluded.
+    # The web game (web/) is the only thing deployed.
     defaults:
       run:
         working-directory: web

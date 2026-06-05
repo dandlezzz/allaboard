@@ -1,60 +1,57 @@
 # AGENTS.md
 
-This repository is the **Board Web SDK** version of Trafalgar — Age of Sail.
+This repository is the **Board Web SDK** game Trafalgar — Age of Sail.
 
 ## What to assume
 
-- This is a WebSDK Android/WebView project. The web app (`web/`) is the build
-  target; the Unity project under `unity/` is the original prototype and the
-  gameplay source of truth being ported.
+- The web app (`web/`) is the product and the build target: a Vite + TypeScript
+  + PixiJS canvas game that runs on Board hardware and in the browser.
+- Deploy to Board hardware with `scripts/deploy_board_web.sh` (build →
+  `@board.fun/web-pack` → `board-connect install`). See `BOARD_HARDWARE.md`.
 - The source Board Web SDK bundle lives at `$HOME/board/board-websdk`.
-- The Board **Unity** SDK (`fun.board`) is vendored at `unity/package` and
-  referenced by `unity/Packages/manifest.json` as `file:../package`.
 - Use `Board.input.subscribe(...)` for live contact frames (see
   `web/src/board/input.ts`).
 - Track physical piece instances by `contactId`, not `glyphId`.
 - Treat `glyphId` as a piece type identifier only.
 - Always guard SDK calls with `Board.isOnDevice` so browser preview works.
+- `web/AGENTS.md` holds the detailed Board Web SDK rules for `web/`.
 
 ## Project identity
 
-- Android package id: `com.defaultcompany.trafalgarweb`
 - Board app id: `trafalgar-web`
-- APK output: `Builds/Android/TrafalgarWeb.apk`
+- Board package id: `com.defaultcompany.trafalgarweb`
 - Web app: `web/`
-- Android wrapper: `android/`
-- Unity prototype: `unity/`
+- Legacy Android WebView wrapper: `android/` (not the primary deploy path)
 - Shared SDK bundle: `$HOME/board/board-websdk`
-- Piece model: `android/app/src/main/assets/model.tflite` (supplied from the SDK)
 
 ## Web source layout
 
-`web/src/` mirrors the Unity `Assets/Scripts/` module split:
+`web/src/` is split into gameplay modules:
 
-- `board/` ← Unity `Input/` — Board SDK input adapter + mouse fallback (done)
-- `core/` ← Unity `Core/` — game loop, config, match state (stub)
-- `ships/` ← Unity `Ships/` — ship model, classes, sail/ammo (stub)
-- `combat/` ← Unity `Combat/` — wind, broadsides, boarding (stub)
-- `ai/` ← Unity `AI/` — the solo fleet AI (stub)
-- `rendering/` ← Unity `Rendering/` — procedural sea/ships as canvas drawing (stub)
-- `ui/` ← Unity `UI/` — the code-built HUD (stub)
+- `board/` — Board SDK input adapter + mouse fallback
+- `core/` — game loop, config, match state
+- `ships/` — ship model, classes, sail/ammo
+- `combat/` — wind, broadsides, boarding
+- `ai/` — the solo fleet AI
+- `rendering/` — procedural sea/ships drawn to the canvas
+- `ui/` — the code-built HUD
 
-## Build and deploy loop
+## Deploy loop
 
 Prefer:
 
 ```bash
-./scripts/build_android.sh --install
+./scripts/deploy_board_web.sh --install
 ```
 
 Use `--launch` to install and start the app:
 
 ```bash
-./scripts/build_android.sh --launch
+./scripts/deploy_board_web.sh --launch
 ```
 
-The script resolves `bdb` from `BDB_BIN`, `PATH`, `Tools/bdb`, `$HOME/Desktop/bdb`,
-and `$HOME/Documents/bdb`.
+The script resolves `board-connect` from `BOARD_CONNECT_BIN`, `PATH`, and
+`$HOME/.local/bin/board-connect`.
 
 ## Browser loop
 

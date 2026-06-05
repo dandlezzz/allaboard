@@ -9,7 +9,7 @@ deployed to Vercel via Vercel's **native Git integration** (push to `main` →
 Vercel builds & deploys; config in `vercel.json`, no GitHub Actions). Here the web
 game is a Vite static SPA, so we deploy `web/` to Vercel the same way.
 
-The Unity project in `unity/` is **not** deployed — only `web/`.
+Only `web/` is deployed.
 
 ## Files
 
@@ -76,10 +76,10 @@ Then follow Path A or Path B above.
 
 - `web/vite.config.ts` uses `base: "./"` (relative asset paths), which works at a
   Vercel root domain and on any subpath — no change needed.
-- The standalone build only needs `pixi.js`; the optional private Board Web SDK
-  (`@harrishill/board-sdk`, see `web/README.md`) is **not** required for the
+- The standalone build only needs `pixi.js`; the optional Board Web SDK
+  (`@board.fun/web-sdk`, see `web/README.md`) is **not** required for the
   deployed browser build. If you later add it as a real dependency, CI will need
-  access to that tarball/registry.
+  access to that auth-gated package.
 - **Optional board.fun packaging:** to additionally produce a `.webapp.zip` for
   board.fun, add a dev dependency on `@board.fun/web-pack` and a job/step that
   runs it against `web/dist` after the build, uploading the zip as an artifact or

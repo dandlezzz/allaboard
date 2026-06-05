@@ -1,47 +1,34 @@
 # Trafalgar — Age of Sail
 
-Trafalgar — Age of Sail is a Board Web SDK port of the Unity **Trafalgar** naval
-combat prototype. It runs as a Vite + TypeScript canvas game inside the Board
-WebView Android wrapper. Two fleets of 18th-century sailing warships — **British**
-vs **Franco-Spanish** — manoeuvre with the wind and trade broadsides until one
-side is sunk or captured.
+Trafalgar — Age of Sail is a Board Web SDK naval-combat game. It runs as a
+Vite + TypeScript + PixiJS canvas app on Board (board.fun) hardware and in the
+browser. Two fleets of 18th-century sailing warships — **British** vs
+**Franco-Spanish** — manoeuvre with the wind and trade broadsides until one side
+is sunk or captured.
 
-> **Status:** this repo currently holds the **web scaffold**. The directory
-> layout, build tooling, and the Board input adapter are in place; the gameplay
-> systems are stubbed and being ported from the Unity project under `unity/`.
+> **Status:** active development. The web app under `web/` is the product and
+> the build target; the directory layout, build/deploy tooling, and the Board
+> input adapter are in place while the gameplay systems are filled in.
 
 ## Layout
 
-- `web/`: Vite + TypeScript game source.
-- `android/`: Android WebView wrapper with Board touch bridge integration.
-- `scripts/`: build/deploy helpers (`build_android.sh`).
-- `unity/`: the original Unity prototype (the gameplay source of truth being ported).
+- `web/`: the game — Vite + TypeScript + PixiJS source (the build target).
+- `android/`: legacy Android WebView wrapper (kept for reference; not the
+  primary deploy path).
+- `scripts/`: build/deploy helpers (`deploy_board_web.sh`).
+- `docs/`: design notes and downloaded Board SDK reference material.
 - `_refs/`: art/reference material (e.g. top-down ship reference).
-- `Builds/Android/`: copied APK output from the project build helper.
 - Shared SDK bundle: `$HOME/board/board-websdk/`.
 
 ## Identity
 
-- Android package/application id: `com.defaultcompany.trafalgarweb`
-- Android display label: `Trafalgar — Age of Sail`
 - Board app id: `trafalgar-web`
-- APK output: `Builds/Android/TrafalgarWeb.apk`
+- Board package id: `com.defaultcompany.trafalgarweb`
+- Display name: `Trafalgar — Age of Sail`
 
-## Build And Install
+## Develop
 
-```bash
-./scripts/build_android.sh
-./scripts/build_android.sh --install
-./scripts/build_android.sh --launch
-```
-
-The wrapper builds `web/dist`, packages it into Android assets, copies the debug
-APK to `Builds/Android/TrafalgarWeb.apk`, and can install or launch with `bdb`.
-The web dependency and Android AAR resolve from the shared SDK bundle at
-`$HOME/board/board-websdk/`. Override this with `BOARD_WEBSDK_DIR=/path/to/sdk`
-or `-PboardWebSdkDir=/path/to/sdk`.
-
-For browser-only iteration:
+For browser iteration:
 
 ```bash
 cd web
@@ -51,13 +38,23 @@ npm run dev
 
 The browser preview uses a mouse/pointer fallback. Board hardware uses
 `Board.input.subscribe(...)` for glyph and finger contacts (see
-`web/src/board/input.ts`).
+`web/src/board/input.ts`). See `web/AGENTS.md` for the Board Web SDK rules.
 
-## The Unity prototype (`unity/`)
+## Deploy to Board hardware
 
-The original game — an entirely procedural Unity 2021.3 project — lives in
-`unity/` and remains fully intact (`unity/Assets`, `unity/Packages`,
-`unity/ProjectSettings`, and the Board **Unity** SDK at `unity/package`). Open
-`unity/` as a Unity project and press Play. See `unity/README.md` for the full
-gameplay design, controls, and mechanics. The web port mirrors its module split
-under `web/src/`.
+Build `web/`, package it into a `.webapp.zip` with `@board.fun/web-pack`, and
+install it on a paired Board over the LAN with `board-connect`:
+
+```bash
+./scripts/deploy_board_web.sh            # build + package only
+./scripts/deploy_board_web.sh --install  # install on the Board
+./scripts/deploy_board_web.sh --launch   # install and launch
+```
+
+See [`BOARD_HARDWARE.md`](BOARD_HARDWARE.md) for prerequisites (the
+`board-connect` CLI, `@board.fun/web-pack`, and pairing).
+
+## Deploy to the browser (Vercel)
+
+Continuous deployment of `web/` to Vercel is described in
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
