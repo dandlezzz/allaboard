@@ -5,7 +5,7 @@
 
 import * as Config from "./config";
 import { Faction, ControlMode, accentColor, displayName } from "./faction";
-import { normalize360, headingToVector, vectorToHeading, angleDifference } from "./nav";
+import { normalize360, headingToVector, vectorToHeading, angleDifference, signedDelta } from "./nav";
 import { rangeFloat, seed } from "./rng";
 import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
 import { Wind, pointOfSailColor } from "../combat/wind";
@@ -118,6 +118,18 @@ function closestSegmentSegment(
   return { c1: add(p1, scale(d1, s)), c2: add(p2, scale(d2, t)) };
 }
 
+/**
+ * A live RELATIVE rotate-to-steer session: the Piece orientation captured when
+ * steering began and each commanded ship's ordered heading at that instant
+ * (keyed by ship id). Headings are then driven as baseline + Δ where Δ is how
+ * far the Piece has rotated since `pieceDeg`. `lastDelta` dead-bands tiny jitter.
+ */
+interface SteerRef {
+  pieceDeg: number;
+  baseHeadings: Map<number, number>;
+  lastDelta: number;
+}
+
 export class Game {
   private readonly renderer: Renderer;
   private readonly hud: Hud;
@@ -147,11 +159,14 @@ export class Game {
   // tracked and lifted independently. Keyed by contactId — NEVER by glyphId (a
   // Piece *type* id). Mouse-placed batons have no entry here.
   private readonly batonContact = new Map<Faction, number>();
-  // Latch state for rotate-to-steer: the Piece orientation (degrees) at which we
-  // last wrote the squadron's heading. We only re-apply when the Piece has
-  // turned past Config.BatonSteerToleranceDeg, so a resting/held heading is
-  // never re-clamped to the Piece every frame.
-  private readonly batonSteerDeg = new Map<Faction, number>();
+  // RELATIVE rotate-to-steer session, per faction. Captured when steering begins
+  // (Piece first held): the Piece orientation at that moment plus each commanded
+  // ship's ordered heading then. As the Piece turns by Δ from `pieceDeg`, every
+  // commanded ship's heading is set to its baseline + Δ — so placing the baton
+  // (Δ = 0) changes NOTHING (ships hold their current course); only an
+  // intentional rotation turns them. Absent ⇒ not currently steering (heading
+  // latched); re-grabbing the Piece re-baselines.
+  private readonly batonSteerRef = new Map<Faction, SteerRef>();
   // Whether each side's baton is currently HELD (hand on the Piece, or a mouse
   // steer-drag in progress) — drives the brighter "being commanded" highlight.
   private readonly batonHeld = new Map<Faction, boolean>();
@@ -421,11 +436,15 @@ export class Game {
       this.batonPos.set(faction, { x: world.x, z: world.z });
     }
 
-    // Rotate-to-steer (latched, held-gated). `orientation` is radians here;
-    // the Board reports DEGREES, which we recover for the steer maths.
+    // Rotate-to-steer (RELATIVE, held-gated). While held, rotating the Piece
+    // turns the squadron by the same delta from a baseline captured when the
+    // hold began — so placement never snaps the course. Releasing ends the
+    // session (heading latches); re-grabbing re-baselines.
     this.batonHeld.set(faction, s.touched);
     if (s.touched) {
-      this.steerFromOrientation(faction, s.orientation);
+      this.steerRelative(faction, s.orientation);
+    } else {
+      this.batonSteerRef.delete(faction);
     }
   }
 
@@ -445,9 +464,9 @@ export class Game {
   private bindBaton(faction: Faction, contactId: number, world: Vec2): void {
     this.batonContact.set(faction, contactId);
     this.seedBaton(faction, world);
-    // Reset the steer latch so the first genuine rotation (not the placement
-    // orientation) is what turns the fleet.
-    this.batonSteerDeg.delete(faction);
+    // End any prior steer session so placement starts from "hold current course"
+    // — the next held frame re-baselines and a Δ of 0 changes nothing.
+    this.batonSteerRef.delete(faction);
   }
 
   /** Dismisses the baton bound to `contactId` (Piece lifted / canceled). */
@@ -466,31 +485,44 @@ export class Game {
     this.batonPos.delete(faction);
     this.commandedShips.delete(faction);
     this.batonContact.delete(faction);
-    this.batonSteerDeg.delete(faction);
+    this.batonSteerRef.delete(faction);
     this.batonHeld.delete(faction);
   }
 
   /**
-   * Latched rotate-to-steer. `orientationRad` is the Piece facing in radians;
-   * we convert to degrees and only re-issue the squadron heading when the Piece
-   * has turned past Config.BatonSteerToleranceDeg since the last write — which
-   * doubles as the rotation dead-band and stops a held/resting heading from
-   * being re-clamped to Piece jitter every frame.
+   * RELATIVE rotate-to-steer. `orientationRad` is the Piece facing in radians.
+   * The first held frame captures a baseline (the Piece angle + each commanded
+   * ship's current ordered heading); thereafter each ship's heading = its
+   * baseline + Δ, where Δ is how far the Piece has rotated since the baseline.
+   * So merely placing/holding the Piece (Δ = 0) changes nothing — only an
+   * intentional turn steers — and the squadron turns coherently (every ship by
+   * the same Δ, preserving formation). The sign is POSITIVE (turning the Piece
+   * clockwise turns the fleet the same way; matches the earlier hardware fix). A
+   * small dead-band on Δ ignores Piece jitter.
    */
-  private steerFromOrientation(faction: Faction, orientationRad: number): void {
+  private steerRelative(faction: Faction, orientationRad: number): void {
     const orientationDeg = normalize360(orientationRad * (180 / Math.PI));
-    const last = this.batonSteerDeg.get(faction);
-    if (last !== undefined && angleDifference(orientationDeg, last) < Config.BatonSteerToleranceDeg) {
-      return; // within dead-band → leave the latched heading alone
+    let ref = this.batonSteerRef.get(faction);
+    if (!ref) {
+      // Begin a steer session: baseline = current Piece angle + each ship's order.
+      const baseHeadings = new Map<number, number>();
+      for (const cmd of this.aliveCommanded(faction)) baseHeadings.set(cmd.id, cmd.targetHeadingDeg);
+      this.batonSteerRef.set(faction, { pieceDeg: orientationDeg, baseHeadings, lastDelta: 0 });
+      return; // Δ = 0 on the first frame → no change (hold current course)
     }
-    this.batonSteerDeg.set(faction, orientationDeg);
-    // Map Piece facing → fleet heading. The sign is POSITIVE (heading =
-    // +orientationDeg): the negated convention read inverted on hardware, so
-    // rotating the physical Piece now steers the squadron intuitively. The mouse
-    // steer-drag path (vectorToHeading in handleMouseMove) is independent and
-    // unaffected by this change.
-    const heading = normalize360(orientationDeg);
-    for (const cmd of this.aliveCommanded(faction)) cmd.setTargetHeading(heading);
+    const delta = signedDelta(ref.pieceDeg, orientationDeg); // signed rotation since baseline
+    if (Math.abs(delta - ref.lastDelta) < Config.BatonSteerToleranceDeg) return; // dead-band jitter
+    ref.lastDelta = delta;
+    for (const cmd of this.aliveCommanded(faction)) {
+      let base = ref.baseHeadings.get(cmd.id);
+      if (base === undefined) {
+        // A ship that wasn't in the baseline (shouldn't happen mid-session) —
+        // baseline it now so it doesn't jump.
+        base = cmd.targetHeadingDeg - delta;
+        ref.baseHeadings.set(cmd.id, base);
+      }
+      cmd.setTargetHeading(base + delta);
+    }
   }
 
   /**
@@ -730,9 +762,10 @@ export class Game {
     if (faction === null) return;
     this.seedBaton(faction, world);
     // A mouse-placed baton is not bound to a physical Piece; clear any stale
-    // binding / held / latch state from a previous owner.
+    // binding / held / steer-session state from a previous owner. Placement keeps
+    // the squadron's current course (no heading change here).
     this.batonContact.delete(faction);
-    this.batonSteerDeg.delete(faction);
+    this.batonSteerRef.delete(faction);
     this.batonHeld.set(faction, false);
   }
 
@@ -793,7 +826,7 @@ export class Game {
     this.batonPos.clear();
     this.commandedShips.clear();
     this.batonContact.clear();
-    this.batonSteerDeg.clear();
+    this.batonSteerRef.clear();
     this.batonHeld.clear();
 
     // Both fleets start tucked into a BOTTOM corner of the arena (negative Z is
@@ -1027,11 +1060,16 @@ export class Game {
       this.renderer.hideHeadingLine();
       return;
     }
+    // Colour each ship's ordered-course vector by the point of sail of that
+    // heading (green = reach/run, amber = close-hauled, red = in-irons), the same
+    // ramp as the on-ship dot. On device these persistent vectors ARE the live
+    // rotate-to-steer preview (they redraw every frame as the Piece turns), so
+    // rotating the baton shows the expected-speed colour live.
     const lines = commanded.map((s) => ({
       from: s.position,
       headingDeg: s.targetHeadingDeg,
       length: s.stats.length * 2.5,
-      color: accentColor(s.faction),
+      color: pointOfSailColor(s.targetHeadingDeg, this.wind),
     }));
     this.renderer.showHeadingLines(lines);
   }
