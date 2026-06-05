@@ -341,31 +341,39 @@ export class Renderer {
    * renderer (to draw them) and the game (to hit-test taps), so the geometry
    * lives in one place.
    */
-  commandPanelLayout(batonPos: Vec2): { sail: Vec2; ammo: Vec2; r: number } {
+  commandPanelLayout(batonPos: Vec2): {
+    sail: { x: number; z: number; halfW: number; halfH: number };
+    ammo: Vec2;
+    r: number;
+  } {
     const offset = Config.BatonControlClusterRadius;
     const dx = Config.BatonControlButtonGap;
     const r = Config.BatonControlButtonRadius;
+    // The sail control is a TALL vertical thermometer; the ammo control a disc.
+    const thHalfW = r * 0.7;
+    const thHalfH = r * 2.2;
 
     // Cluster centre sits BELOW the Piece (mirrored from the old above-anchor, so
-    // the controls now hang off the opposite side of the baton circle); clamp it
-    // so both discs stay on-board.
+    // the controls hang off the opposite side of the baton circle); clamp it so
+    // the (taller) thermometer and the ammo disc both stay on-board.
     const safe = 1 - Config.ArenaSafeInset;
-    const maxX = Config.ArenaHalfX * safe - (dx + r);
-    const maxZ = Config.ArenaHalfZ * safe - r;
+    const maxX = Config.ArenaHalfX * safe - (dx + Math.max(r, thHalfW));
+    const maxZ = Config.ArenaHalfZ * safe - Math.max(r, thHalfH);
     const cx = clampRange(batonPos.x, -maxX, maxX);
     const cz = clampRange(batonPos.z - offset, -maxZ, maxZ);
 
     return {
-      sail: { x: cx - dx, z: cz },
+      sail: { x: cx - dx, z: cz, halfW: thHalfW, halfH: thHalfH },
       ammo: { x: cx + dx, z: cz },
       r,
     };
   }
 
   /**
-   * Draws a GROUP command panel above each baton: a sail-reefing button (billow
-   * glyph for the current group setting) and an ammunition button (round vs bar
-   * shot). Each controls one side's commanded squadron at once.
+   * Draws a GROUP command panel by each baton: a vertical sail THERMOMETER
+   * (bottom = Heave-To, top = Full Sail; filled to the current setting) and an
+   * ammunition disc (round vs bar shot). Each controls one side's commanded
+   * squadron at once.
    */
   showCommandPanels(
     panels: ReadonlyArray<{ pos: Vec2; sail: number; ammo: number }>,
@@ -377,11 +385,10 @@ export class Renderer {
       return;
     }
     for (const panel of panels) {
-      const { sail: sp, ammo: ap, r } = this.commandPanelLayout(panel.pos);
-      this.drawPanelDisc(g, sp, r, 0x24435e);
-      this.drawSailButtonGlyph(g, sp, r, panel.sail);
-      this.drawPanelDisc(g, ap, r, 0x2a2433);
-      this.drawAmmoButtonGlyph(g, ap, r, panel.ammo);
+      const { sail, ammo, r } = this.commandPanelLayout(panel.pos);
+      this.drawSailThermometer(g, sail, panel.sail);
+      this.drawPanelDisc(g, ammo, r, 0x2a2433);
+      this.drawAmmoButtonGlyph(g, ammo, r, panel.ammo);
     }
     g.visible = true;
   }
@@ -507,23 +514,68 @@ export class Renderer {
     g.circle(p.x, p.y, r).stroke({ width: 0.3 * Config.ShipScale, color: 0xffe08a, alpha: 0.9 });
   }
 
-  /** Billow glyph for the group sail setting (0 = Heave To … 3 = Full Sail). */
-  private drawSailButtonGlyph(g: Graphics, pos: Vec2, r: number, sail: number): void {
-    const c = this.worldLocal(pos);
-    const m = r * 0.62;
-    g.moveTo(c.x, c.y - m).lineTo(c.x, c.y + m).stroke({ width: r * 0.12, color: 0xcaa46a });
-    if (sail <= 0) {
-      // Heave To: furled — a red X.
-      const x = r * 0.42;
-      g.moveTo(c.x - x, c.y - x).lineTo(c.x + x, c.y + x);
-      g.moveTo(c.x + x, c.y - x).lineTo(c.x - x, c.y + x);
-      g.stroke({ width: r * 0.14, color: 0xff5555 });
-      return;
+  /**
+   * Draws the vertical sail THERMOMETER: a track (bottom = Heave-To, top = Full
+   * Sail), a cream fill rising from the bottom to the current setting, faint
+   * ticks at the four discrete stops, and a knob at the current level. `level` is
+   * the SailSetting ordinal 0..3. Heave-To (empty) also shows a small red X.
+   */
+  private drawSailThermometer(
+    g: Graphics,
+    rect: { x: number; z: number; halfW: number; halfH: number },
+    level: number,
+  ): void {
+    const cx = rect.x;
+    // worldLocal maps +Z (top in world) → smaller local y, so the thermometer
+    // top (Full Sail) is the smaller y; bottom (Heave-To) the larger y.
+    const yTop = -(rect.z + rect.halfH);
+    const yBot = -(rect.z - rect.halfH);
+    const x0 = cx - rect.halfW;
+    const w = rect.halfW * 2;
+    const h = yBot - yTop;
+    const radius = rect.halfW * 0.6;
+
+    // Track.
+    g.roundRect(x0, yTop, w, h, radius).fill({ color: 0x12283b, alpha: 0.9 });
+    g.roundRect(x0, yTop, w, h, radius).stroke({
+      width: 0.3 * Config.ShipScale,
+      color: 0xffe08a,
+      alpha: 0.9,
+    });
+
+    // Fill from the bottom up to the current setting (0..3 → 0..1 of the height).
+    const frac = clampRange(level, 0, 3) / 3;
+    const fillH = h * frac;
+    const knobY = yBot - fillH;
+    if (fillH > 0.5) {
+      g.roundRect(x0 + w * 0.2, knobY, w * 0.6, fillH, radius * 0.6).fill({
+        color: 0xefe7d4,
+        alpha: 0.92,
+      });
+    } else {
+      // Heave-To (empty): furled — a small red X near the bottom.
+      const m = rect.halfW * 0.5;
+      const yx = yBot - rect.halfW * 0.9;
+      g.moveTo(cx - m, yx - m).lineTo(cx + m, yx + m);
+      g.moveTo(cx + m, yx - m).lineTo(cx - m, yx + m);
+      g.stroke({ width: 0.18 * Config.ShipScale, color: 0xff5555 });
     }
-    // bulge grows with sail: CloseReefed(1) < Reefed(2) < FullSail(3)
-    const bulge = r * (sail >= 3 ? 0.72 : sail === 2 ? 0.45 : 0.22);
-    const h = r * (sail >= 3 ? 0.55 : sail === 2 ? 0.45 : 0.32);
-    g.moveTo(c.x, c.y - h).quadraticCurveTo(c.x + bulge, c.y, c.x, c.y + h).fill({ color: 0xefe7d4 });
+
+    // Faint ticks at each of the four discrete stops.
+    for (let i = 0; i < 4; i++) {
+      const y = yBot - (i / 3) * h;
+      g.moveTo(x0 + w * 0.14, y)
+        .lineTo(x0 + w * 0.86, y)
+        .stroke({ width: 0.1 * Config.ShipScale, color: 0xffe08a, alpha: 0.4 });
+    }
+
+    // Knob at the current level.
+    g.circle(cx, knobY, rect.halfW * 0.82).fill({ color: 0xfff1c2, alpha: 0.95 });
+    g.circle(cx, knobY, rect.halfW * 0.82).stroke({
+      width: 0.16 * Config.ShipScale,
+      color: 0xffe08a,
+      alpha: 0.95,
+    });
   }
 
   /** Round shot (one ball) vs bar shot (two balls + bar); 0 = round, 1 = bar. */

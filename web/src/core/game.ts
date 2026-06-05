@@ -11,7 +11,7 @@ import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
 import { Wind } from "../combat/wind";
 import { CombatSystem } from "../combat/combatSystem";
 import { FleetAI, AIPersona } from "../ai/fleetAI";
-import { nextSail } from "../ships/sail";
+import { SailSetting } from "../ships/sail";
 import { nextAmmo } from "../ships/ammo";
 import { Ship, ShipState } from "../ships/ship";
 import { ShipClass, shipStats } from "../ships/shipClass";
@@ -164,11 +164,17 @@ export class Game {
   // Browser mouse-emulation gesture state (intent-by-target, no brittle global
   // tap/drag threshold). A press that starts on a baton roundel begins a
   // steer-drag (or, if it doesn't move, dismisses); a press on open sea places.
-  private mouseGesture: "roundel" | "sea" | null = null;
+  private mouseGesture: "roundel" | "sea" | "control" | null = null;
   private mouseFaction: Faction | null = null;
   private mousePointer: number | null = null;
   private mouseDownScreen: { x: number; y: number } | null = null;
   private mouseMoved = false;
+
+  // Sail-thermometer drag: the contact currently dragging a baton's vertical sail
+  // control, and which side's squadron it trims. Tracked by contactId so finger
+  // (device) and mouse (browser) drags both work; cleared on release.
+  private sailDragContact: number | null = null;
+  private sailDragFaction: Faction | null = null;
 
   // ---- Phase / setup -----------------------------------------------------
   private phase: GamePhase = GamePhase.Setup;
@@ -312,6 +318,8 @@ export class Game {
     this.setupCountdown = 0;
     this.placed.clear();
     this.resetMouseGesture();
+    this.sailDragContact = null;
+    this.sailDragFaction = null;
     this.renderer.hideCoursePreview();
     this.spawnAllFleets();
     // No live match yet: drop any in-match pause context (Restart/Quit overlay).
@@ -499,28 +507,51 @@ export class Game {
   // ---- Baton lifecycle: finger trim (device) ----------------------------
 
   /**
-   * A finger contact on hardware only ever trims the floating controls of a
-   * resting baton — it never places, moves, steers, or dismisses command (the
-   * Piece owns that). Taps only (the first frame); ignored if it misses every
-   * control disc.
+   * A finger contact on hardware only ever operates the floating controls of a
+   * baton — it never places, moves, steers, or dismisses command (the Piece owns
+   * that). Routed through the shared control handler so a finger can DRAG the
+   * sail thermometer (began/moved/ended) and tap the ammo disc.
    */
   private handleFinger(s: PointerSample): void {
-    if (s.phase !== "began") return;
     const world = this.renderer.screenToWorld(s.position.x, s.position.y);
-    this.tryTrimControls(world);
+    this.handleControlContact(world, s);
   }
 
   /**
-   * Hit-tests a world point against every baton's floating sail/ammo controls;
-   * trims the matching side's whole commanded squadron and returns true if a
-   * control was hit, else false. Shared by finger taps and mouse clicks.
+   * Handles a contact against any baton's floating command controls:
+   *   - Sail THERMOMETER: `began` inside it starts a drag and sets the squadron's
+   *     sail from the touch height; `moved` keeps setting it live; `ended`
+   *     releases. The height snaps to one of the four settings (bottom = Heave-To
+   *     … top = Full Sail).
+   *   - Ammo disc: a tap (`began`) cycles the squadron's shot type.
+   * Returns true if the contact is "owned" by a control, so the caller doesn't
+   * treat it as baton placement/steering. Shared by device fingers + browser mouse.
    */
-  private tryTrimControls(world: Vec2): boolean {
+  private handleControlContact(world: Vec2, s: PointerSample): boolean {
+    if (s.phase === "moved") {
+      if (s.contactId === this.sailDragContact && this.sailDragFaction !== null) {
+        this.setSailFromThermometer(this.sailDragFaction, world);
+        return true;
+      }
+      return false;
+    }
+    if (s.phase === "ended") {
+      if (s.contactId === this.sailDragContact) {
+        this.sailDragContact = null;
+        this.sailDragFaction = null;
+        return true;
+      }
+      return false;
+    }
+
+    // began: hit-test the thermometer (start a drag) then the ammo disc (tap).
     for (const [faction, pos] of this.batonPos) {
       if (this.aliveCommanded(faction).length === 0) continue;
       const panel = this.renderer.commandPanelLayout(pos);
-      if (distance(world, panel.sail) <= panel.r) {
-        this.cycleGroupSail(faction);
+      if (this.withinThermometer(world, panel.sail)) {
+        this.sailDragContact = s.contactId;
+        this.sailDragFaction = faction;
+        this.setSailFromThermometer(faction, world);
         return true;
       }
       if (distance(world, panel.ammo) <= panel.r) {
@@ -529,6 +560,35 @@ export class Game {
       }
     }
     return false;
+  }
+
+  /** Whether a world point is within a baton's sail-thermometer hit area (a
+   *  generous, touch-friendly box around the track). */
+  private withinThermometer(
+    world: Vec2,
+    sail: { x: number; z: number; halfW: number; halfH: number },
+  ): boolean {
+    const padX = Config.BatonControlButtonRadius * 0.7;
+    const padZ = Config.BatonControlButtonRadius * 0.4;
+    return (
+      Math.abs(world.x - sail.x) <= sail.halfW + padX &&
+      Math.abs(world.z - sail.z) <= sail.halfH + padZ
+    );
+  }
+
+  /**
+   * Maps a touch height on a baton's sail thermometer to one of the four sail
+   * settings (bottom = Heave-To(0) … top = Full Sail(3)), snapping to the
+   * nearest, and applies it to that side's whole commanded squadron.
+   */
+  private setSailFromThermometer(faction: Faction, world: Vec2): void {
+    const alive = this.aliveCommanded(faction);
+    const pos = this.batonPos.get(faction);
+    if (alive.length === 0 || !pos) return;
+    const sail = this.renderer.commandPanelLayout(pos).sail;
+    const t = clamp01((world.z - (sail.z - sail.halfH)) / (2 * sail.halfH));
+    const setting = Math.round(t * 3) as SailSetting; // 0..3, snap to nearest
+    for (const cmd of alive) cmd.setSail(setting);
   }
 
   // ---- Baton lifecycle: mouse emulation (browser) -----------------------
@@ -542,8 +602,12 @@ export class Game {
   private handleMouseDown(world: Vec2, s: PointerSample): void {
     this.resetMouseGesture();
 
-    // 1) Floating trim controls take priority.
-    if (this.tryTrimControls(world)) return;
+    // 1) Floating command controls take priority (thermometer drag / ammo tap).
+    if (this.handleControlContact(world, s)) {
+      this.mouseGesture = "control";
+      this.mousePointer = s.contactId;
+      return;
+    }
 
     // 2) On a baton roundel → steer-drag / dismiss.
     const onRoundel = this.batonAt(world);
@@ -565,6 +629,11 @@ export class Game {
   }
 
   private handleMouseMove(world: Vec2, s: PointerSample): void {
+    // A live sail-thermometer drag takes priority (no down-screen anchor needed).
+    if (this.mouseGesture === "control") {
+      this.handleControlContact(world, s);
+      return;
+    }
     if (s.contactId !== this.mousePointer || !this.mouseDownScreen) return;
 
     if (!this.mouseMoved) {
@@ -596,6 +665,11 @@ export class Game {
   }
 
   private handleMouseUp(world: Vec2, s: PointerSample): void {
+    if (this.mouseGesture === "control") {
+      this.handleControlContact(world, s); // release the thermometer drag
+      this.resetMouseGesture();
+      return;
+    }
     if (s.contactId !== this.mousePointer) {
       this.resetMouseGesture();
       return;
@@ -688,14 +762,6 @@ export class Game {
     const out: Ship[] = [];
     for (const faction of this.commandedShips.keys()) out.push(...this.aliveCommanded(faction));
     return out;
-  }
-
-  /** Group sail order: cycles a side's whole commanded squadron to one setting. */
-  private cycleGroupSail(faction: Faction): void {
-    const alive = this.aliveCommanded(faction);
-    if (alive.length === 0) return;
-    const next = nextSail(alive[0].sail); // representative drives a uniform order
-    for (const cmd of alive) cmd.setSail(next);
   }
 
   /** Group ammunition order: cycles a side's commanded squadron to one shot type. */

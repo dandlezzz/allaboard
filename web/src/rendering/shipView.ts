@@ -132,6 +132,18 @@ export class ShipView implements ShipViewHooks {
   private sailBadgeR = 0;
   private lastSail: SailSetting = -1 as SailSetting;
 
+  // Always-visible on-ship status icons, parented to the (north-up) status group
+  // right by the health bars — NEVER tethered to the map centre. A sail-trim
+  // glyph mirrors the ship's SailSetting (Full / Reefed / Close-Reefed / furled
+  // X for Heave-To); a point-of-sail dot is colour-coded by the wind model:
+  // in-irons (red) / close-hauled (amber) / reaching-or-running (green). Both
+  // are redrawn only on change (no per-frame allocation).
+  private sailTrimGfx = new Graphics();
+  private sailTrimR = 0;
+  private posGfx = new Graphics();
+  private posR = 0;
+  private lastPosState = -1;
+
   private statusBars = new Container();
   private statusLift = 0;
   private hullBar!: { fill: Graphics; width: number };
@@ -195,8 +207,9 @@ export class ShipView implements ShipViewHooks {
     this.buildCommandBubble(ship.stats);
     this.buildControlButtons(ship.stats);
     this.buildStatusBars(ship.stats);
+    this.buildStatusIcons(ship.stats);
     // Command controls (sail + ammo) live in their own container, shown only on
-    // the commanded ship; the health bars are always visible.
+    // the commanded ship; the health bars + status icons are always visible.
     this.statusBars.addChild(this.commandControls);
     this.buildSailBadge(ship.stats);
     this.buildAmmoBadge(ship.stats);
@@ -554,6 +567,59 @@ export class ShipView implements ShipViewHooks {
   }
 
   /**
+   * Builds the two always-visible on-ship status icons in a small row just above
+   * the health bars (in the north-up status group): a sail-trim glyph (left) and
+   * a point-of-sail dot (right). Both sit ON the boat and stay upright; neither
+   * is ever drawn as a line to the map centre.
+   */
+  private buildStatusIcons(stats: ShipStats): void {
+    const r = stats.length * 0.11;
+    this.sailTrimR = r;
+    this.posR = r;
+    const y = -stats.length * 0.3; // a row above the health bars (north-up)
+    const dx = stats.length * 0.26;
+
+    // Sail-trim icon (left): dark disc + sail glyph reflecting the setting.
+    const sailGroup = new Container();
+    sailGroup.position.set(-dx, y);
+    const sailDisc = new Graphics();
+    sailDisc.circle(0, 0, r).fill({ color: 0x24435e, alpha: 0.85 });
+    sailGroup.addChild(sailDisc);
+    sailGroup.addChild(this.sailTrimGfx);
+    this.statusBars.addChild(sailGroup);
+
+    // Point-of-sail icon (right): dark disc + a colour-coded dot.
+    const posGroup = new Container();
+    posGroup.position.set(dx, y);
+    const posDisc = new Graphics();
+    posDisc.circle(0, 0, r).fill({ color: 0x161b22, alpha: 0.85 });
+    posGroup.addChild(posDisc);
+    posGroup.addChild(this.posGfx);
+    this.statusBars.addChild(posGroup);
+
+    this.drawSailTrim(this.ship.sail);
+    this.lastPosState = pointOfSailState(this.ship.pointOfSail);
+    this.drawPointOfSail(this.lastPosState);
+  }
+
+  /** Redraws the on-ship sail-trim glyph for the given setting. */
+  private drawSailTrim(setting: SailSetting): void {
+    drawSailGlyph(this.sailTrimGfx, this.sailTrimR, setting);
+  }
+
+  /**
+   * Redraws the on-ship point-of-sail dot: red (in irons), amber (close-hauled),
+   * or green (reaching / running). A plain filled circle — deliberately NOT an
+   * arc — so it can never be mis-tessellated into a line across the board.
+   */
+  private drawPointOfSail(state: number): void {
+    const g = this.posGfx;
+    g.clear();
+    const col = POINT_OF_SAIL_COLORS[state] ?? POINT_OF_SAIL_COLORS[2];
+    g.circle(0, 0, this.posR * 0.5).fill({ color: col });
+  }
+
+  /**
    * Always-visible sail-setting badge, parented to the (north-up) status-bar
    * group so it stays upright above the hull without per-frame counter-rotation.
    * Redrawn only when the setting changes.
@@ -757,7 +823,7 @@ export class ShipView implements ShipViewHooks {
   }
 
   private updateStatusOverlays(ship: Ship): void {
-    // Ammo button icon + always-visible sail badge: redraw only on change.
+    // Ammo button icon + always-visible badges/icons: redraw only on change.
     if (ship.ammo !== this.lastAmmo) {
       this.lastAmmo = ship.ammo;
       this.drawAmmoIcon(ship.ammo);
@@ -766,6 +832,12 @@ export class ShipView implements ShipViewHooks {
     if (ship.sail !== this.lastSail) {
       this.lastSail = ship.sail;
       this.drawSailIcon(ship.sail);
+      this.drawSailTrim(ship.sail);
+    }
+    const posState = pointOfSailState(ship.pointOfSail);
+    if (posState !== this.lastPosState) {
+      this.lastPosState = posState;
+      this.drawPointOfSail(posState);
     }
   }
 
@@ -809,6 +881,17 @@ function line(g: Graphics, from: Vec2, to: Vec2, width: number): void {
  * a red X. Shared by the always-visible setting badge and the on-ship sail-cycle
  * button so both read identically. Caller clears via this function's `g.clear()`.
  */
+// Point-of-sail dot colours, indexed by state: 0 = In Irons (red), 1 = Close-
+// Hauled (amber), 2 = reaching/running or unknown (green).
+const POINT_OF_SAIL_COLORS = [0xff4d4d, 0xffb020, 0x4dd06a];
+
+/** Maps the wind-model point-of-sail label to a status colour index. */
+function pointOfSailState(label: string): number {
+  if (label === "In Irons") return 0;
+  if (label === "Close-Hauled") return 1;
+  return 2;
+}
+
 function drawSailGlyph(g: Graphics, r: number, setting: SailSetting): void {
   g.clear();
 
