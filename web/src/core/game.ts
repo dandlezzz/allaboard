@@ -342,16 +342,25 @@ export class Game {
   }
 
   /**
-   * A Setup contact: on its first frame ("began"), if it lands on a not-yet-ready
-   * human side's pad, that side places its command piece. Drives both the mouse
-   * fallback (click) and, on hardware, a Glyph contact appearing on the pad.
+   * A Setup contact: if a present contact (a fresh tap OR a Piece/finger RESTING)
+   * sits on a not-yet-ready human side's pad, that side places its command piece.
+   *
+   * We deliberately accept ANY non-lift phase (not only the one-frame "began"):
+   * on the Board a Piece left on the table across a restart keeps the SAME
+   * contactId, so it never re-fires "began" — gating on "began" alone meant such
+   * a Piece could rest on the pad forever and never ready the fleet. Accepting
+   * "moved"/stationary frames readies it as soon as it's on the pad.
+   * `placeCommandPiece` is idempotent (once placed, `needsPlacement` is false, so
+   * the loop skips). The hit radius is generous/touch-friendly. Drives the mouse
+   * fallback (click/drag), device fingers, and recognised Glyph Pieces alike.
    */
   private handleSetupContact(s: PointerSample): void {
-    if (s.phase !== "began") return;
+    if (s.phase === "ended") return; // a lift never places
     const world = this.renderer.screenToWorld(s.position.x, s.position.y);
+    const hitRadius = Config.SetupPadRadius * 1.6; // generous, forgiving target
     for (const faction of PLAYABLE_FACTIONS) {
       if (!this.needsPlacement(faction)) continue;
-      if (distance(world, padPosition(faction)) <= Config.SetupPadRadius) {
+      if (distance(world, padPosition(faction)) <= hitRadius) {
         this.placeCommandPiece(faction);
         return;
       }
