@@ -8,11 +8,15 @@ export const ShipScale = 10;
 
 /** Global tuning multiplier on the base sailing speed of every ship. Lowered so
  *  the whole fleet sails more slowly (sailboat feel), on top of the per-setting
- *  sail throttle fractions. */
-export const BaseSpeedMultiplier = 0.18;
+ *  sail throttle fractions. Reduced 0.18 → 0.12 (~33% slower) for a more
+ *  deliberate, stately pace. */
+export const BaseSpeedMultiplier = 0.12;
 
-/** Global tuning multiplier on the base broadside gun range of every ship. */
-export const BaseRangeMultiplier = 2;
+/** Global tuning multiplier on the base broadside gun range of every ship.
+ *  Reduced 2 → 1.5 (25% shorter range): fleets must close more to engage. Range
+ *  still dwarfs a hull length and fits the arena (First Rate gunRange = 40 × 10 ×
+ *  1.5 = 600 < arena width 1800). */
+export const BaseRangeMultiplier = 1.5;
 
 /** Half-extent of the playable sea along the LONG axis (world X). */
 export const ArenaHalfX = 90 * ShipScale;
@@ -62,11 +66,11 @@ export const BroadsideArcHalfAngle = 45;
 /** Half-angle (degrees) of the fore/aft arc in which the chase guns may fire. */
 export const ChaseArcHalfAngle = 28;
 
-/** Per-gun damage scalar applied on top of the ammo profile. Tuned DOWN now that
- *  broadsides fire their full gun count (First Rate = 32): a point-blank full
- *  broadside is devastating but a large ship still takes a few good broadsides to
- *  sink (not one). See the per-class totals in CombatSystem comments. */
-export const PerGunDamageScale = 0.3;
+/** Per-gun damage scalar applied on top of the ammo profile. Tuned DOWN (0.3 →
+ *  0.24, ~20% less base damage) so engagements last longer; combined with the
+ *  steeper range falloff below, close-range broadsides still bite while
+ *  long-range fire is weak. */
+export const PerGunDamageScale = 0.24;
 
 /** Fraction of a normal gun's damage dealt by a fore/aft chase gun. Kept low so a
  *  2-gun chase volley is harassment, never a substitute for a broadside (a full
@@ -109,11 +113,13 @@ export const ProjectileSpeed = 70 * ShipScale;
 /** Per-ball damage multiplier at point-blank (the curve's peak, range 0). */
 export const PointBlankDamageMultiplier = 1.35;
 
-/** Per-ball damage multiplier at maximum range (the curve's floor). */
-export const RangeFalloffFloor = 0.2;
+/** Per-ball damage multiplier at maximum range (the curve's floor). Lowered
+ *  0.2 → 0.07 so max-range hits do far less. */
+export const RangeFalloffFloor = 0.07;
 
-/** Exponent shaping the damage curve vs closeness (1 = linear, >1 rewards closing). */
-export const DamageFalloffExponent = 1.8;
+/** Exponent shaping the damage curve vs closeness (1 = linear, >1 rewards
+ *  closing). Raised 1.8 → 2.6 so damage drops off harder as the range opens. */
+export const DamageFalloffExponent = 2.6;
 
 /** Per-ball hit chance at point-blank range. */
 export const HitChancePointBlank = 0.95;

@@ -18,7 +18,7 @@ import { ShipClass, type ShipStats } from "../ships/shipClass";
 import { hullOutline, hullEdgePoint, toLocalPoly } from "./geometry";
 import { shipTextures } from "./assets";
 import type { Renderer } from "./renderer";
-import type { Wind } from "../combat/wind";
+import { POINT_OF_SAIL_COLORS, pointOfSailColorIndex, type Wind } from "../combat/wind";
 
 // Fraction of a ship texture's height occupied by the hull (bow-to-stern). The
 // art is bow-UP with transparent margins; this maps world `length` onto the
@@ -598,7 +598,7 @@ export class ShipView implements ShipViewHooks {
     this.statusBars.addChild(posGroup);
 
     this.drawSailTrim(this.ship.sail);
-    this.lastPosState = pointOfSailState(this.ship.pointOfSail);
+    this.lastPosState = pointOfSailColorIndex(this.ship.pointOfSail);
     this.drawPointOfSail(this.lastPosState);
   }
 
@@ -834,7 +834,7 @@ export class ShipView implements ShipViewHooks {
       this.drawSailIcon(ship.sail);
       this.drawSailTrim(ship.sail);
     }
-    const posState = pointOfSailState(ship.pointOfSail);
+    const posState = pointOfSailColorIndex(ship.pointOfSail);
     if (posState !== this.lastPosState) {
       this.lastPosState = posState;
       this.drawPointOfSail(posState);
@@ -881,17 +881,6 @@ function line(g: Graphics, from: Vec2, to: Vec2, width: number): void {
  * a red X. Shared by the always-visible setting badge and the on-ship sail-cycle
  * button so both read identically. Caller clears via this function's `g.clear()`.
  */
-// Point-of-sail dot colours, indexed by state: 0 = In Irons (red), 1 = Close-
-// Hauled (amber), 2 = reaching/running or unknown (green).
-const POINT_OF_SAIL_COLORS = [0xff4d4d, 0xffb020, 0x4dd06a];
-
-/** Maps the wind-model point-of-sail label to a status colour index. */
-function pointOfSailState(label: string): number {
-  if (label === "In Irons") return 0;
-  if (label === "Close-Hauled") return 1;
-  return 2;
-}
-
 function drawSailGlyph(g: Graphics, r: number, setting: SailSetting): void {
   g.clear();
 

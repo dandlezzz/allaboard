@@ -54,6 +54,26 @@ export class Wind {
   }
 }
 
+// Point-of-sail status colours — shared by the on-ship point-of-sail dot AND the
+// course-preview line so the two always read the same: red = in irons (no-go),
+// amber = close-hauled, green = reaching / running (fast points of sail).
+export const POINT_OF_SAIL_COLORS = [0xff4d4d, 0xffb020, 0x4dd06a] as const;
+
+/** Maps a point-of-sail label to a colour-ramp index (0 = red In Irons, 1 =
+ *  amber Close-Hauled, 2 = green reach/run or unknown). */
+export function pointOfSailColorIndex(label: string): number {
+  if (label === "In Irons") return 0;
+  if (label === "Close-Hauled") return 1;
+  return 2;
+}
+
+/** The point-of-sail status colour for sailing `headingDeg` in the given wind —
+ *  used to tint the course preview by the expected speed of that heading. */
+export function pointOfSailColor(headingDeg: number, wind: Wind): number {
+  const off = angleDifference(headingDeg, wind.fromDegrees);
+  return POINT_OF_SAIL_COLORS[pointOfSailColorIndex(pointOfSailFactor(off).pointOfSail)];
+}
+
 /** Computes the speed multiplier and classifies the point of sail. */
 export function pointOfSailFactor(offWindAngle: number): PointOfSailResult {
   offWindAngle = Math.abs(offWindAngle);

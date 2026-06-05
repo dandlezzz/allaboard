@@ -8,7 +8,7 @@ import { Faction, ControlMode, accentColor, displayName } from "./faction";
 import { normalize360, headingToVector, vectorToHeading, angleDifference } from "./nav";
 import { rangeFloat, seed } from "./rng";
 import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
-import { Wind } from "../combat/wind";
+import { Wind, pointOfSailColor } from "../combat/wind";
 import { CombatSystem } from "../combat/combatSystem";
 import { FleetAI, AIPersona } from "../ai/fleetAI";
 import { SailSetting } from "../ships/sail";
@@ -655,14 +655,20 @@ export class Game {
       const alive = this.aliveCommanded(faction);
       if (pos && alive.length > 0) {
         const dir = sub(world, pos);
+        // Tint the preview by the point of sail of the heading being aimed, so
+        // the course-setter sees the expected speed: green = reach/run, amber =
+        // close-hauled, red = in irons (no-go). Falls back to the faction accent
+        // for a zero-length drag (no meaningful heading yet).
+        let color = accentColor(faction);
         if (magnitude(dir) > 0.001) {
           const heading = vectorToHeading(dir);
+          color = pointOfSailColor(heading, this.wind);
           for (const cmd of alive) cmd.setTargetHeading(heading);
         }
         this.renderer.showCoursePreview(
           alive.map((c) => c.position),
           world,
-          accentColor(faction),
+          color,
         );
       }
     }
