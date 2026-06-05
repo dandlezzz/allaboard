@@ -188,8 +188,20 @@ body.phase-setup #hint {
   gap: 8px;
 }
 
-body.board-device #dev-controls {
+/* On the Board device, surface the opponent (persona) selection buttons so the
+ * player can pick their AI on the hardware. The desktop-only dev toggles
+ * (2-player swap and Rematch) stay hidden — tapping a persona already restarts
+ * the match against that opponent. */
+body.board-device #toggle-ai-button,
+body.board-device #reset-button {
   display: none;
+}
+
+/* Bigger, easier finger targets for the persona buttons on the touch console. */
+body.board-device #dev-controls button {
+  min-width: 132px;
+  min-height: 56px;
+  font-size: 17px;
 }
 
 #dev-controls button {
