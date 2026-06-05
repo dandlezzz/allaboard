@@ -9,8 +9,10 @@ export const ShipScale = 10;
 /** Global tuning multiplier on the base sailing speed of every ship. Lowered so
  *  the whole fleet sails more slowly (sailboat feel), on top of the per-setting
  *  sail throttle fractions. Reduced 0.18 → 0.12 (~33% slower) for a more
- *  deliberate, stately pace. */
-export const BaseSpeedMultiplier = 0.12;
+ *  deliberate, stately pace; nudged back up 0.12 → 0.15 (midway to the earlier
+ *  0.18) so the fleet isn't sluggish, while the per-class topSpeed compression
+ *  keeps the small-vs-large spread tight. */
+export const BaseSpeedMultiplier = 0.15;
 
 /** Global tuning multiplier on the base broadside gun range of every ship.
  *  Reduced 2 → 1.5 (25% shorter range): fleets must close more to engage. Range
