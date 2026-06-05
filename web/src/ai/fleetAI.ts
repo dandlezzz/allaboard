@@ -10,7 +10,7 @@
 
 import * as Config from "../core/config";
 import { enemyOf, Faction } from "../core/faction";
-import { normalize360, angleDifference, vectorToHeading, headingToVector } from "../core/nav";
+import { normalize360, angleDifference, signedDelta, vectorToHeading, headingToVector } from "../core/nav";
 import { add, distance, scale, sub, angle, type Vec2 } from "../core/vec";
 import { AmmoType } from "../ships/ammo";
 import { SailSetting } from "../ships/sail";
@@ -24,9 +24,30 @@ export enum AIPersona {
   Tactician = 2,
 }
 
+/** Degrees added to NoGoAngle to pick the close-hauled "best upwind" heading (a
+ *  small margin so the ship sails just clear of the no-go zone, not on its edge). */
+const TACK_CLOSE_HAULED_MARGIN = 6;
+/** Minimum |target-bearing off the wind| (deg) before a tack switch is allowed —
+ *  keeps a near-dead-upwind target from making the ship flip-flap tacks. */
+const TACK_SWITCH_MARGIN = 8;
+/** Minimum AI ticks committed to a tack before switching (hysteresis), so the
+ *  ship holds each tack and zig-zags instead of tacking every frame. */
+const MIN_TACK_TICKS = 90;
+
+/** Per-ship tacking state: which tack we're on (+1/-1 = the wind-relative side of
+ *  the close-hauled heading) and how many ticks we've held it. */
+interface TackState {
+  sign: number;
+  ticks: number;
+}
+
 export class FleetAI {
   /** Mutable so a fresh game can be started against a different persona. */
   persona: AIPersona;
+
+  // Per-ship tacking state (Standard persona), keyed by ship id. Lets each ship
+  // commit to a tack and only come about at the layline (with hysteresis).
+  private readonly tackState = new Map<number, TackState>();
 
   constructor(
     readonly faction: Faction,
@@ -49,7 +70,7 @@ export class FleetAI {
     }
   }
 
-  // ---- Standard (unchanged) ---------------------------------------------
+  // ---- Standard (closes, broadsides, trims — and now TACKS upwind) ------
 
   private tickStandard(ships: ReadonlyArray<Ship>, wind: Wind): void {
     for (const ship of ships) {
@@ -73,20 +94,75 @@ export class FleetAI {
     let desiredHeading: number;
 
     if (found.dist > ship.stats.gunRange * 0.8) {
-      // Out of effective range: close the distance under full sail.
-      desiredHeading = bearing;
+      // Out of effective range: close under full sail. If the target is upwind
+      // (its bearing is in the no-go zone), TACK toward it (zig-zag close-hauled)
+      // instead of steering straight into irons; otherwise steer right at it.
       ship.setSail(SailSetting.FullSail);
       ship.setAmmo(chooseAmmo(ship, target));
+      desiredHeading = this.headingTowardBearing(ship, bearing, wind);
     } else {
-      // In the killing zone: present a broadside and pound away.
-      desiredHeading = broadsideHeading(ship, bearing);
+      // In the killing zone: present a broadside and pound away. A broadside is
+      // ~90° off the bearing (a beam reach) so it's normally sailable; the
+      // avoidNoGo clamp is a safety net and we drop any tack state.
+      this.tackState.delete(ship.id);
+      desiredHeading = avoidNoGo(broadsideHeading(ship, bearing), wind);
       ship.setSail(SailSetting.Reefed);
       ship.setAmmo(chooseAmmo(ship, target));
     }
 
-    desiredHeading = avoidNoGo(desiredHeading, wind);
     desiredHeading = avoidEdges(ship, desiredHeading);
     ship.setTargetHeading(desiredHeading);
+  }
+
+  /**
+   * Heading for a ship trying to reach `bearing`. If that bearing is SAILABLE
+   * (outside the no-go zone) steer straight at it (and clear any tack state). If
+   * it's upwind (within `NoGoAngle` of the wind's "from" direction), the ship
+   * can't sail there directly, so tack toward it instead (see {@link tackUpwind}).
+   */
+  private headingTowardBearing(ship: Ship, bearing: number, wind: Wind): number {
+    if (angleDifference(bearing, wind.fromDegrees) >= Config.NoGoAngle) {
+      this.tackState.delete(ship.id);
+      return bearing;
+    }
+    return this.tackUpwind(ship, bearing, wind);
+  }
+
+  /**
+   * Stateful tacking toward an UPWIND target. The two tacks are the close-hauled
+   * headings `wind ± (NoGoAngle + margin)`; `sign` (+1/-1) selects the side. We
+   * favour the tack on the target's side of the wind (the one that points more
+   * toward it), and only come about when we've OVERSTOOD — the target's bearing
+   * has crossed to the OTHER side of the wind axis (the layline) — gated by a
+   * minimum hold (`MIN_TACK_TICKS`) and a small angle margin (`TACK_SWITCH_MARGIN`)
+   * so the ship commits to each tack and zig-zags upwind instead of flip-flapping.
+   */
+  private tackUpwind(ship: Ship, bearing: number, wind: Wind): number {
+    const limit = Config.NoGoAngle + TACK_CLOSE_HAULED_MARGIN;
+    // Signed offset of the target from dead-upwind: >0 one side, <0 the other.
+    const bearingOffWind = signedDelta(wind.fromDegrees, bearing);
+    const favored = bearingOffWind >= 0 ? 1 : -1; // tack that points toward the target
+
+    let st = this.tackState.get(ship.id);
+    if (!st) {
+      st = { sign: favored, ticks: 0 };
+      this.tackState.set(ship.id, st);
+    }
+    st.ticks++;
+
+    // Come about only once we've clearly overstood (target now on the other side)
+    // AND we've held this tack long enough — prevents rapid flip-flapping that
+    // would kill speed, especially for a near-dead-upwind target.
+    if (
+      st.sign !== favored &&
+      Math.abs(bearingOffWind) > TACK_SWITCH_MARGIN &&
+      st.ticks >= MIN_TACK_TICKS
+    ) {
+      st.sign = favored;
+      st.ticks = 0;
+    }
+
+    return normalize360(wind.fromDegrees + st.sign * limit);
   }
 
   // ---- Turtle -----------------------------------------------------------
