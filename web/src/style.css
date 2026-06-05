@@ -176,14 +176,19 @@ body.phase-setup #hint {
 }
 
 /* Dev controls */
+/* Opponent (persona) selection — pinned to the UPPER-LEFT corner (nudged a touch
+ * in from the very corner for a safe-area margin), clear of the bottom area where
+ * the Board's own system controls sit. Top-left is free of the HUD (wind is
+ * top-centre, the fleet-status panels are vertically centred, the fleets spawn in
+ * the bottom corners). */
 #dev-controls {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  top: 20px;
+  left: 16px;
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   max-width: min(560px, calc(100vw - 32px));
   gap: 8px;
 }
@@ -247,8 +252,8 @@ body.board-device #dev-controls button {
   }
 
   #dev-controls {
-    right: 10px;
-    bottom: 10px;
+    top: 12px;
+    left: 10px;
   }
 
   #dev-controls button {
