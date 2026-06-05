@@ -16,15 +16,9 @@
 // browser (no SDK / `Board.isOnDevice === false`) this is a no-op and the mouse
 // remains the only baton driver.
 
-import { loadBoard, type BoardContactLike, type BoardLike } from "./sdk";
+import { loadBoard, isGlyphContact, type BoardContactLike, type BoardLike } from "./sdk";
 
 export type Vec = { x: number; y: number };
-
-// `sdk.ts` describes only the fields the live input adapter needs. Glyph (Piece)
-// contacts additionally carry `glyphId` (which Piece in the set; 0 = finger,
-// 1+ = Piece per the Web SDK). We widen the shared type locally rather than edit
-// the shared `sdk.ts`, to stay collision-free with the baton worker.
-type GlyphContact = BoardContactLike & { glyphId?: number };
 
 /**
  * The slice of the Baton-of-Command API the mouse control scheme exposes.
@@ -107,9 +101,8 @@ function subscribeGlyphBaton(
   const active = new Set<number>();
 
   const unsubscribe = board.input.subscribe((contacts: ReadonlyArray<BoardContactLike>) => {
-    for (const raw of contacts) {
-      const contact = raw as GlyphContact;
-      if (!isGlyph(contact.type)) continue; // ignore fingers
+    for (const contact of contacts) {
+      if (!isGlyphContact(contact)) continue; // ignore fingers
       if (options.batonGlyphId !== undefined && Number(contact.glyphId) !== options.batonGlyphId) {
         continue; // not the robot/baton Piece
       }
@@ -141,13 +134,6 @@ function subscribeGlyphBaton(
 
 function degToRad(deg: number): number {
   return (deg * Math.PI) / 180;
-}
-
-// The SDK enums aren't available without the package; compare loosely against
-// the documented string / numeric forms (mirrors input.ts).
-function isGlyph(type: number | string): boolean {
-  const t = String(type).toLowerCase();
-  return t === "glyph" || t === "1";
 }
 
 function mapPhase(phase: number | string): "began" | "moved" | "ended" | "other" {

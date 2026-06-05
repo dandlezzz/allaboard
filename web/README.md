@@ -17,10 +17,11 @@ Opens at <http://localhost:5173>. Off-device, `Board.isOnDevice` is `false`, so
 the Board SDK calls are skipped and the mouse/pointer fallback is used. This mode
 is for styling, wiring UI, and syntax-checking SDK calls.
 
-> **Heads up:** `npm install` needs the private Board Web SDK tarball
-> (`@harrishill/board-sdk`) — see [Linking the SDK](#linking-the-sdk). Until that
-> tarball is present, install and `npm run build` will fail to resolve the SDK,
-> exactly as in the upstream Board-binho project.
+> **Heads up:** the Board Web SDK (`@board.fun/web-sdk`) is **optional** here.
+> `npm install` and `npm run build` work with the public dependencies alone —
+> [`src/board/sdk.ts`](src/board/sdk.ts) shims the SDK with local interfaces and a
+> guarded dynamic import, so nothing fails to resolve when the SDK is absent. See
+> [Linking the SDK](#linking-the-sdk) to add the real package for on-device builds.
 
 ## Run it against a real bridge
 
@@ -61,9 +62,18 @@ systems land in an obvious place:
 
 ## Linking the SDK
 
-`package.json` references the SDK via
-`file:../../board-websdk/harrishill-board-sdk-0.1.0.tgz`, mirroring Board-binho's
-shared-bundle convention. `@harrishill/board-sdk` is **not** on public npm —
-fetch it from the Board developer portal (<https://dev.board.fun/>) and place the
-tarball at that path (or update the relative `file:` path to wherever you keep the
-shared `board-websdk/` bundle).
+The Board Web SDK is published as **`@board.fun/web-sdk`**. It is **not** a hard
+dependency of this project: [`src/board/sdk.ts`](src/board/sdk.ts) describes the
+slice of the SDK we use with local interfaces and loads the real module at
+runtime via a guarded dynamic import, so the app installs, builds, and runs in
+the browser (mouse fallback) with only public deps.
+
+To get the real typed APIs / on-device behaviour, install it:
+
+```bash
+npm install @board.fun/web-sdk
+```
+
+The dynamic import in `sdk.ts` then resolves at runtime, and `Board.isOnDevice`
+gates the on-device path. The documented static-import form is
+`import { Board, BoardContactType } from "@board.fun/web-sdk";`.

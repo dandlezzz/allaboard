@@ -101,22 +101,28 @@ APP_PACKAGE_ID="${APP_PACKAGE_ID:-com.defaultcompany.trafalgarweb}"
 APP_NAME="${APP_NAME:-Trafalgar — Age of Sail}"
 APP_ID="${APP_ID:-40d89417-f8f1-47c4-9899-4254a976ef7b}"
 SDK_VERSION="${SDK_VERSION:-1.0.0-beta.2}"
+# Piece Set model, bundle-relative to dist/ (Vite copies web/public/ → dist/).
+MODEL_FILE="${MODEL_FILE:-model.tflite}"
 OUT_DIR="$PROJECT_ROOT/Builds/Board"
 ZIP_PATH="${WEBAPP_ZIP:-$OUT_DIR/trafalgar.webapp.zip}"
 WEB_PACK_CMD="${WEB_PACK_CMD:-npx --yes @board.fun/web-pack@latest}"
 mkdir -p "$OUT_DIR"
+[[ -f "$DIST_DIR/$MODEL_FILE" ]] || fail "Piece Set model not found at $DIST_DIR/$MODEL_FILE (expected web/public/$MODEL_FILE to be copied into dist by Vite)."
 log "Packaging dist/ into $ZIP_PATH ($WEB_PACK_CMD)."
 (
     cd "$WEB_DIR"
     # If a real @board.fun/web-sdk is installed, --sdk-version is auto-detected and
     # can be dropped; we pass it so packaging works without the SDK installed.
-    # Drop --no-model and add --model <file> once you ship a Piece Set model.tflite.
+    # The Piece Set model (web/public/model.tflite → dist/model.tflite via Vite)
+    # is bundled with --model so the device recognises physical Pieces (Glyphs);
+    # web-pack reads it at pack time and the device uses it for on-device Piece
+    # detection (it is NOT downloaded at runtime). The path is bundle-relative.
     # shellcheck disable=SC2086
     $WEB_PACK_CMD dist \
         --package-id "$APP_PACKAGE_ID" \
         --app-id "$APP_ID" \
         --name "$APP_NAME" \
-        --no-model \
+        --model "$MODEL_FILE" \
         --sdk-version "$SDK_VERSION" \
         -o "$ZIP_PATH"
 )

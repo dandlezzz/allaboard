@@ -61,9 +61,15 @@ It honors:
    board-connect screenshot --out /tmp/board.png --board 192.168.4.85
    ```
 
-## After deploying
+## After deploying — ALWAYS commit (required)
 
-End with one short sentence confirming the deploy and giving Daniel the handful of commands he might want next (logs / screenshot / redeploy). Don't dump verbose script output — the user can scroll if they want it.
+**Immediately after any successful Board deploy, commit everything.** This is mandatory — a deploy is not "done" until the repo is committed, so the on-Board build always corresponds to a commit. Run:
+
+```bash
+git add -A && git commit -m "Deploy to Board: <short description of what changed>"
+```
+
+(The bundled `Builds/Board/*.webapp.zip` is gitignored, so it won't be staged — that's fine.) Do this yourself; don't ask first. Then end with one short sentence confirming the deploy + commit and giving Daniel the handful of commands he might want next (logs / screenshot / redeploy). Don't dump verbose script output — the user can scroll if they want it.
 
 ```bash
 # Tail app logs

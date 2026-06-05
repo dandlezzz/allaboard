@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "pack:board": "npm run build && npx @board.fun/web-pack dist",
+    "pack:board": "npm run build && npx --yes @board.fun/web-pack@latest dist --package-id com.defaultcompany.trafalgarweb --app-id 40d89417-f8f1-47c4-9899-4254a976ef7b --name \"Trafalgar — Age of Sail\" --model model.tflite --sdk-version 1.0.0-beta.2 -o ../Builds/Board/trafalgar.webapp.zip",
     "deploy:board": "../scripts/deploy_board_web.sh --launch"
   },
   "dependencies": {

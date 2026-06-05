@@ -22,6 +22,8 @@ export class Hud {
   private readonly fleetBritish = el("fleet-british");
   private readonly fleetFranco = el("fleet-franco");
   private readonly banner = el("banner");
+  private readonly setupTitle = el("setup-title");
+  private readonly setupStatus = el("setup-status");
   private readonly toggleButton = el<HTMLButtonElement>("toggle-ai-button");
   private readonly resetButton = el<HTMLButtonElement>("reset-button");
 
@@ -51,6 +53,19 @@ export class Hud {
   setActivePersona(persona: AIPersona): void {
     for (const entry of this.personaButtons) {
       entry.button.classList.toggle("active", entry.persona === persona);
+    }
+  }
+
+  /**
+   * Shows/hides the pre-game Setup overlay (the "Take Command" prompt + the
+   * waiting/ready status). Toggling `body.phase-setup` lets the stylesheet hide
+   * the in-battle hint while players are placing their command pieces.
+   */
+  setSetupOverlay(active: boolean, title: string, status: string): void {
+    document.body.classList.toggle("phase-setup", active);
+    if (active) {
+      this.setupTitle.textContent = title;
+      this.setupStatus.textContent = status;
     }
   }
 

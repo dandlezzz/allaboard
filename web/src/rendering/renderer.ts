@@ -10,6 +10,12 @@ import { headingToVector } from "../core/nav";
 import { type Vec2, add, scale, sub, magnitude, normalize } from "../core/vec";
 import { smokeTexture } from "./assets";
 
+/** Clamps `v` into the inclusive range [lo, hi] (hi guarded ≥ lo). */
+function clampRange(v: number, lo: number, hi: number): number {
+  const top = Math.max(lo, hi);
+  return v < lo ? lo : v > top ? top : v;
+}
+
 interface Tracer {
   pos: Vec2;
   target: Vec2;
@@ -57,10 +63,17 @@ export class Renderer {
   private smokeLayer!: Container;
   private courseGfx!: Graphics;
   private previewGfx!: Graphics;
-  /** Baton-of-Command marker on the sea + a faint link to its commanded ship. */
+  /** Baton-of-Command markers on the sea + faint links to commanded ships. */
   private batonGfx!: Graphics;
+  /** Per-side group command panels (sail + ammo buttons) drawn at each baton. */
+  private cmdPanelGfx!: Graphics;
+  /** Pre-game Setup placement pads (one per side), drawn in world space. */
+  private setupGfx!: Graphics;
   /** Screen-space layer for floating combat-text popups (not world-scaled). */
   private textLayer!: Container;
+  /** Screen-space layer for Setup pad labels (titles + prompts). */
+  private setupTextLayer!: Container;
+  private readonly padLabels: Text[] = [];
 
   private readonly tracers: Tracer[] = [];
   private readonly puffs: Puff[] = [];
@@ -89,7 +102,8 @@ export class Renderer {
     // the world container) so their font size stays constant regardless of the
     // world camera scale; they're positioned each frame via worldToScreen.
     this.textLayer = new Container();
-    this.app.stage.addChild(this.textLayer);
+    this.setupTextLayer = new Container();
+    this.app.stage.addChild(this.textLayer, this.setupTextLayer);
 
     this.courseGfx = new Graphics();
     this.tracerGfx = new Graphics();
@@ -97,8 +111,12 @@ export class Renderer {
     this.smokeLayer = new Container();
     this.previewGfx = new Graphics();
     this.batonGfx = new Graphics();
+    this.cmdPanelGfx = new Graphics();
+    this.setupGfx = new Graphics();
     this.fxLayer.addChild(
+      this.setupGfx,
       this.batonGfx,
+      this.cmdPanelGfx,
       this.courseGfx,
       this.tracerGfx,
       this.smokeGfx,
@@ -199,35 +217,46 @@ export class Renderer {
     });
   }
 
-  showHeadingLine(from: Vec2, headingDeg: number, length: number, color: number): void {
-    const dir = headingToVector(headingDeg);
-    const a = this.worldLocal(from);
-    const bEnd = add(from, scale(dir, length));
-    const b = this.worldLocal(bEnd);
-    const width = 1.1 * Config.ShipScale;
-    this.courseGfx
-      .clear()
-      .moveTo(a.x, a.y)
-      .lineTo(b.x, b.y)
-      .stroke({ width, color, alpha: 0.9, cap: "round" });
-    this.courseGfx.visible = true;
-  }
-
   hideHeadingLine(): void {
     this.courseGfx.visible = false;
   }
 
-  /** Live drag-to-command preview: a line + marker from the ship to the drag point. */
-  showCoursePreview(from: Vec2, to: Vec2, color: number): void {
-    const a = this.worldLocal(from);
+  /** Draws an ordered-heading line from each commanded ship along its heading
+   *  (each line carries its own accent colour, e.g. per faction in 2-player). */
+  showHeadingLines(
+    lines: ReadonlyArray<{ from: Vec2; headingDeg: number; length: number; color: number }>,
+  ): void {
+    const g = this.courseGfx.clear();
+    if (lines.length === 0) {
+      g.visible = false;
+      return;
+    }
+    const width = 1.1 * Config.ShipScale;
+    for (const ln of lines) {
+      const a = this.worldLocal(ln.from);
+      const b = this.worldLocal(add(ln.from, scale(headingToVector(ln.headingDeg), ln.length)));
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width, color: ln.color, alpha: 0.9, cap: "round" });
+    }
+    g.visible = true;
+  }
+
+  /** Live drag-to-command preview: a line from EACH commanded ship to the drag
+   *  point, with a single marker at the release point. */
+  showCoursePreview(froms: ReadonlyArray<Vec2>, to: Vec2, color: number): void {
+    const g = this.previewGfx.clear();
+    if (froms.length === 0) {
+      g.visible = false;
+      return;
+    }
     const b = this.worldLocal(to);
-    this.previewGfx
-      .clear()
-      .moveTo(a.x, a.y)
-      .lineTo(b.x, b.y)
-      .stroke({ width: 0.8 * Config.ShipScale, color, alpha: 0.85, cap: "round" });
-    this.previewGfx.circle(b.x, b.y, 1.3 * Config.ShipScale).fill({ color, alpha: 0.5 });
-    this.previewGfx.visible = true;
+    for (const from of froms) {
+      const a = this.worldLocal(from);
+      g.moveTo(a.x, a.y)
+        .lineTo(b.x, b.y)
+        .stroke({ width: 0.8 * Config.ShipScale, color, alpha: 0.85, cap: "round" });
+    }
+    g.circle(b.x, b.y, 1.3 * Config.ShipScale).fill({ color, alpha: 0.5 });
+    g.visible = true;
   }
 
   hideCoursePreview(): void {
@@ -235,38 +264,279 @@ export class Renderer {
   }
 
   /**
-   * Draws the Baton of Command marker at a sea point — a glowing gold roundel
-   * with a compass cross — and, when it currently commands a ship, a faint gold
-   * link from the baton to that ship so the pairing is obvious.
+   * Draws every side's Baton of Command — a glowing gold roundel with a compass
+   * cross, surrounded by its translucent sphere-of-influence ring tinted with
+   * the side's accent colour, so each squadron is unambiguous even with two
+   * batons on the field. (No tether lines to commanded ships.)
    */
-  showBaton(pos: Vec2, commandedShipPos: Vec2 | null): void {
-    const lp = this.worldLocal(pos);
-    const R = 2.4 * Config.ShipScale;
+  showBatons(
+    batons: ReadonlyArray<{
+      pos: Vec2;
+      color: number;
+      /** True while the captain is steering (hand on the Piece / mouse drag) —
+       *  drawn brighter, with the full sphere; a resting baton fades the sphere
+       *  to a faint reminder so a stale disc doesn't clutter the field. */
+      held: boolean;
+    }>,
+    influenceRadius: number,
+  ): void {
     const g = this.batonGfx;
     g.clear();
-
-    if (commandedShipPos) {
-      const c = this.worldLocal(commandedShipPos);
-      g.moveTo(lp.x, lp.y)
-        .lineTo(c.x, c.y)
-        .stroke({ width: 0.35 * Config.ShipScale, color: 0xffd24a, alpha: 0.4 });
+    if (batons.length === 0) {
+      g.visible = false;
+      return;
     }
+    const R = 2.4 * Config.ShipScale;
+    for (const baton of batons) {
+      const lp = this.worldLocal(baton.pos);
+      const tint = baton.color;
+      const held = baton.held;
 
-    // Soft outer glow, bright ring, compass cross, and a solid core.
-    g.circle(lp.x, lp.y, R * 1.7).fill({ color: 0xffd24a, alpha: 0.12 });
-    g.circle(lp.x, lp.y, R).stroke({ width: 0.5 * Config.ShipScale, color: 0xffe08a, alpha: 0.95 });
-    const tick = R * 1.35;
-    g.moveTo(lp.x - tick, lp.y).lineTo(lp.x + tick, lp.y);
-    g.moveTo(lp.x, lp.y - tick).lineTo(lp.x, lp.y + tick);
-    g.stroke({ width: 0.28 * Config.ShipScale, color: 0xffe08a, alpha: 0.85 });
-    g.circle(lp.x, lp.y, R * 0.42).fill({ color: 0xfff1c2, alpha: 0.95 });
+      // Sphere of influence: prominent while held/steering, faded while resting.
+      const fillAlpha = held ? 0.08 : 0.03;
+      const ringAlpha = held ? 0.55 : 0.22;
+      g.circle(lp.x, lp.y, influenceRadius).fill({ color: tint, alpha: fillAlpha });
+      g.circle(lp.x, lp.y, influenceRadius).stroke({
+        width: (held ? 0.35 : 0.2) * Config.ShipScale,
+        color: tint,
+        alpha: ringAlpha,
+      });
 
+      // Soft outer glow, bright ring, compass cross, and a solid core. The ring
+      // brightens (and gains an accent halo) while held so it reads as "being
+      // commanded right now".
+      const glow = held ? 0.22 : 0.12;
+      g.circle(lp.x, lp.y, R * 1.7).fill({ color: 0xffd24a, alpha: glow });
+      if (held) {
+        g.circle(lp.x, lp.y, R * 1.35).stroke({
+          width: 0.3 * Config.ShipScale,
+          color: tint,
+          alpha: 0.8,
+        });
+      }
+      g.circle(lp.x, lp.y, R).stroke({
+        width: (held ? 0.6 : 0.5) * Config.ShipScale,
+        color: 0xffe08a,
+        alpha: held ? 1 : 0.9,
+      });
+      const tick = R * 1.35;
+      g.moveTo(lp.x - tick, lp.y).lineTo(lp.x + tick, lp.y);
+      g.moveTo(lp.x, lp.y - tick).lineTo(lp.x, lp.y + tick);
+      g.stroke({ width: 0.28 * Config.ShipScale, color: 0xffe08a, alpha: 0.85 });
+      g.circle(lp.x, lp.y, R * 0.42).fill({ color: 0xfff1c2, alpha: 0.95 });
+    }
     g.visible = true;
   }
 
-  hideBaton(): void {
+  hideBatons(): void {
     this.batonGfx.clear();
     this.batonGfx.visible = false;
+  }
+
+  /**
+   * World positions + radius of the two GROUP command buttons (sail, ammo) for a
+   * baton at `batonPos`. The cluster is anchored as a ring a fixed distance from
+   * the Piece, then CLAMPED into the arena safe area so a baton near an edge
+   * still shows reachable controls (no fixed off-screen offset). Shared by the
+   * renderer (to draw them) and the game (to hit-test taps), so the geometry
+   * lives in one place.
+   */
+  commandPanelLayout(batonPos: Vec2): { sail: Vec2; ammo: Vec2; r: number } {
+    const offset = Config.BatonControlClusterRadius;
+    const dx = Config.BatonControlButtonGap;
+    const r = Config.BatonControlButtonRadius;
+
+    // Cluster centre sits BELOW the Piece (mirrored from the old above-anchor, so
+    // the controls now hang off the opposite side of the baton circle); clamp it
+    // so both discs stay on-board.
+    const safe = 1 - Config.ArenaSafeInset;
+    const maxX = Config.ArenaHalfX * safe - (dx + r);
+    const maxZ = Config.ArenaHalfZ * safe - r;
+    const cx = clampRange(batonPos.x, -maxX, maxX);
+    const cz = clampRange(batonPos.z - offset, -maxZ, maxZ);
+
+    return {
+      sail: { x: cx - dx, z: cz },
+      ammo: { x: cx + dx, z: cz },
+      r,
+    };
+  }
+
+  /**
+   * Draws a GROUP command panel above each baton: a sail-reefing button (billow
+   * glyph for the current group setting) and an ammunition button (round vs bar
+   * shot). Each controls one side's commanded squadron at once.
+   */
+  showCommandPanels(
+    panels: ReadonlyArray<{ pos: Vec2; sail: number; ammo: number }>,
+  ): void {
+    const g = this.cmdPanelGfx;
+    g.clear();
+    if (panels.length === 0) {
+      g.visible = false;
+      return;
+    }
+    for (const panel of panels) {
+      const { sail: sp, ammo: ap, r } = this.commandPanelLayout(panel.pos);
+      this.drawPanelDisc(g, sp, r, 0x24435e);
+      this.drawSailButtonGlyph(g, sp, r, panel.sail);
+      this.drawPanelDisc(g, ap, r, 0x2a2433);
+      this.drawAmmoButtonGlyph(g, ap, r, panel.ammo);
+    }
+    g.visible = true;
+  }
+
+  hideCommandPanels(): void {
+    this.cmdPanelGfx.clear();
+    this.cmdPanelGfx.visible = false;
+  }
+
+  // ---- Pre-game Setup pads ----------------------------------------------
+
+  /**
+   * Draws the pre-game placement pads (one per side): a glowing accent-tinted
+   * roundel a player drops their command piece onto to take command. A ready pad
+   * is filled green with a check; a waiting pad pulses. Each pad carries a
+   * screen-space label (side name + prompt) beneath it.
+   */
+  showSetupPads(
+    pads: ReadonlyArray<{
+      pos: Vec2;
+      radius: number;
+      color: number;
+      title: string;
+      subtitle: string;
+      ready: boolean;
+    }>,
+  ): void {
+    const g = this.setupGfx;
+    g.clear();
+    g.visible = true;
+
+    // Gentle pulse so unfilled pads read as "drop here".
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 420);
+
+    let labelIdx = 0;
+    for (const pad of pads) {
+      const lp = this.worldLocal(pad.pos);
+      const r = pad.radius;
+      const ringColor = pad.ready ? 0x49d17a : pad.color;
+
+      // Outer glow + soft fill.
+      const glow = pad.ready ? 0.18 : 0.1 + 0.14 * pulse;
+      g.circle(lp.x, lp.y, r * 1.7).fill({ color: ringColor, alpha: glow });
+      g.circle(lp.x, lp.y, r).fill({ color: ringColor, alpha: pad.ready ? 0.22 : 0.12 });
+
+      // Dashed-feel double ring (crisp inner + faint outer).
+      g.circle(lp.x, lp.y, r).stroke({
+        width: 0.55 * Config.ShipScale,
+        color: ringColor,
+        alpha: pad.ready ? 0.95 : 0.55 + 0.35 * pulse,
+      });
+      g.circle(lp.x, lp.y, r * (pad.ready ? 0.62 : 0.55 + 0.06 * pulse)).stroke({
+        width: 0.3 * Config.ShipScale,
+        color: ringColor,
+        alpha: 0.5,
+      });
+
+      if (pad.ready) {
+        // A bold check mark for a claimed pad.
+        const s = r * 0.45;
+        g.moveTo(lp.x - s, lp.y + s * 0.1)
+          .lineTo(lp.x - s * 0.2, lp.y + s * 0.7)
+          .lineTo(lp.x + s, lp.y - s * 0.6)
+          .stroke({ width: 0.7 * Config.ShipScale, color: 0xeafff1, alpha: 0.97, cap: "round", join: "round" });
+      } else {
+        // A central target dot to aim the command piece at.
+        g.circle(lp.x, lp.y, r * 0.16).fill({ color: ringColor, alpha: 0.6 + 0.3 * pulse });
+      }
+
+      // Labels (screen space) — title bold, prompt beneath.
+      const sp = this.worldToScreen(pad.pos);
+      const yBelow = sp.y + r * this.px + 10;
+      const title = this.padLabel(labelIdx++);
+      title.text = pad.title;
+      title.style.fill = pad.ready ? 0xbff0cf : pad.color;
+      title.position.set(sp.x, yBelow);
+      title.visible = true;
+
+      const sub = this.padLabel(labelIdx++);
+      sub.text = pad.subtitle;
+      sub.style.fill = 0xdfe9f2;
+      sub.style.fontSize = 15;
+      sub.style.fontWeight = "600";
+      sub.position.set(sp.x, yBelow + 22);
+      sub.visible = true;
+    }
+
+    // Hide any leftover labels from a previous (larger) pad set.
+    for (let i = labelIdx; i < this.padLabels.length; i++) this.padLabels[i].visible = false;
+  }
+
+  hideSetupPads(): void {
+    this.setupGfx.clear();
+    this.setupGfx.visible = false;
+    for (const label of this.padLabels) label.visible = false;
+  }
+
+  /** Lazily grows the pool of reusable pad-label Text objects. */
+  private padLabel(index: number): Text {
+    let label = this.padLabels[index];
+    if (!label) {
+      label = new Text({
+        text: "",
+        style: {
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontSize: 19,
+          fontWeight: "800",
+          fill: 0xffffff,
+          align: "center",
+          stroke: { color: 0x06121c, width: 4 },
+        },
+      });
+      label.anchor.set(0.5, 0);
+      this.setupTextLayer.addChild(label);
+      this.padLabels[index] = label;
+    }
+    return label;
+  }
+
+  private drawPanelDisc(g: Graphics, pos: Vec2, r: number, fill: number): void {
+    const p = this.worldLocal(pos);
+    g.circle(p.x, p.y, r).fill({ color: fill, alpha: 0.92 });
+    g.circle(p.x, p.y, r).stroke({ width: 0.3 * Config.ShipScale, color: 0xffe08a, alpha: 0.9 });
+  }
+
+  /** Billow glyph for the group sail setting (0 = Heave To … 3 = Full Sail). */
+  private drawSailButtonGlyph(g: Graphics, pos: Vec2, r: number, sail: number): void {
+    const c = this.worldLocal(pos);
+    const m = r * 0.62;
+    g.moveTo(c.x, c.y - m).lineTo(c.x, c.y + m).stroke({ width: r * 0.12, color: 0xcaa46a });
+    if (sail <= 0) {
+      // Heave To: furled — a red X.
+      const x = r * 0.42;
+      g.moveTo(c.x - x, c.y - x).lineTo(c.x + x, c.y + x);
+      g.moveTo(c.x + x, c.y - x).lineTo(c.x - x, c.y + x);
+      g.stroke({ width: r * 0.14, color: 0xff5555 });
+      return;
+    }
+    // bulge grows with sail: CloseReefed(1) < Reefed(2) < FullSail(3)
+    const bulge = r * (sail >= 3 ? 0.72 : sail === 2 ? 0.45 : 0.22);
+    const h = r * (sail >= 3 ? 0.55 : sail === 2 ? 0.45 : 0.32);
+    g.moveTo(c.x, c.y - h).quadraticCurveTo(c.x + bulge, c.y, c.x, c.y + h).fill({ color: 0xefe7d4 });
+  }
+
+  /** Round shot (one ball) vs bar shot (two balls + bar); 0 = round, 1 = bar. */
+  private drawAmmoButtonGlyph(g: Graphics, pos: Vec2, r: number, ammo: number): void {
+    const c = this.worldLocal(pos);
+    const col = ammo === 1 ? 0x52cc75 : 0xd1d1d9;
+    if (ammo === 1) {
+      g.rect(c.x - r * 0.5, c.y - r * 0.1, r, r * 0.2).fill({ color: col });
+      g.circle(c.x - r * 0.5, c.y, r * 0.24).fill({ color: col });
+      g.circle(c.x + r * 0.5, c.y, r * 0.24).fill({ color: col });
+    } else {
+      g.circle(c.x, c.y, r * 0.45).fill({ color: col });
+    }
   }
 
   /** Advances + redraws tracers and smoke. Call once per frame. */

@@ -53,6 +53,17 @@ Use `--launch` to install and start the app:
 The script resolves `board-connect` from `BOARD_CONNECT_BIN`, `PATH`, and
 `$HOME/.local/bin/board-connect`.
 
+**ALWAYS commit after every Board deploy.** Immediately after any successful
+deploy (`scripts/deploy_board_web.sh` / `board-connect install`), commit the
+whole working tree so the on-Board build always maps to a commit:
+
+```bash
+git add -A && git commit -m "Deploy to Board: <what changed>"
+```
+
+Do this without being asked. (The `Builds/` deploy artifact is gitignored.)
+See the `deploy-board` skill for the full pipeline.
+
 ## Browser loop
 
 ```bash

@@ -4,14 +4,15 @@
 // Rendering is delegated to the PixiJS Renderer + ShipView.
 
 import * as Config from "./config";
-import { Faction, ControlMode, accentColor } from "./faction";
-import { normalize360, headingToVector } from "./nav";
+import { Faction, ControlMode, accentColor, displayName } from "./faction";
+import { normalize360, headingToVector, vectorToHeading, angleDifference } from "./nav";
 import { rangeFloat, seed } from "./rng";
 import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
 import { Wind } from "../combat/wind";
 import { CombatSystem } from "../combat/combatSystem";
 import { FleetAI, AIPersona } from "../ai/fleetAI";
 import { nextSail } from "../ships/sail";
+import { nextAmmo } from "../ships/ammo";
 import { Ship, ShipState } from "../ships/ship";
 import { ShipClass, shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
@@ -19,10 +20,40 @@ import type { Renderer } from "../rendering/renderer";
 import { buildSea } from "../rendering/scene";
 import type { Hud } from "../ui/hud";
 import type { PointerSample } from "../board/input";
+import type { PauseMenu } from "../board/pauseMenu";
 
-// A pointer that moves less than this (screen px) between down and up is treated
-// as a tap (select / deselect); more than this is a drag (set course).
-const K_DRAG_THRESHOLD_PX = 6;
+/**
+ * The match's lifecycle. On load and on every Rematch/persona change the game
+ * opens in `Setup` (players place their command pieces); once all required
+ * players are ready it transitions to `Playing`; the win condition ends it in
+ * `GameOver`.
+ */
+export enum GamePhase {
+  Setup = 0,
+  Playing = 1,
+  GameOver = 2,
+}
+
+/** The two sides that can take the field (used to iterate pads / fleets). */
+const PLAYABLE_FACTIONS: ReadonlyArray<Faction> = [Faction.British, Faction.FrancoSpanish];
+
+/** Centre of a faction's setup pad (see Config.SetupPad*). */
+function padPosition(faction: Faction): Vec2 {
+  const p = faction === Faction.British ? Config.SetupPadBritish : Config.SetupPadFrancoSpanish;
+  return { x: p.x, z: p.z };
+}
+
+/** Short label for an AI persona, shown on the opponent's setup pad. */
+function personaName(persona: AIPersona): string {
+  switch (persona) {
+    case AIPersona.Turtle:
+      return "Turtle";
+    case AIPersona.Tactician:
+      return "Giga-brain";
+    default:
+      return "Standard";
+  }
+}
 
 /**
  * Picks an INITIAL wind direction in the arc (45°, 315°) — i.e. always over 45°
@@ -98,23 +129,55 @@ export class Game {
   private readonly control = new Map<Faction, ControlMode>();
   private readonly ai = new Map<Faction, FleetAI>();
 
-  // ---- Baton of Command -------------------------------------------------
-  // The player commands via a single "Baton of Command": a marker placed on the
-  // sea (a mouse click in the browser; a Glyph contact on Board hardware). On
-  // placement it takes command of the NEAREST human-controlled ship within
-  // Config.BatonCommandRadius; that ship stays commanded (so it can be steered
-  // and trimmed) until the baton is placed again elsewhere. In 2-player either
-  // human side can be commanded — whichever human ship is nearest the baton.
-  private batonPos: Vec2 | null = null;
-  private commandedShip: Ship | null = null;
+  // ---- Baton of Command (per faction) -----------------------------------
+  // Each human side commands via its own "Baton of Command": a marker placed on
+  // the sea (a mouse click in the browser; a Glyph contact on Board hardware).
+  // On placement every alive friendly ship of THAT side within the baton's
+  // sphere of influence (Config.BatonCommandRadius) comes under command and
+  // stays commanded (steerable, trimmable) until that side's baton is placed
+  // elsewhere. A single tap only ever moves one side's baton — the side whose
+  // nearest ship is closest to the tap — so two players (or two physical
+  // Glyphs) can hold independent command of their own fleets. The match seeds
+  // each baton from where its command piece was placed during Setup.
+  private readonly batonPos = new Map<Faction, Vec2>();
+  private readonly commandedShips = new Map<Faction, Ship[]>();
 
-  // Pointer gesture state: a TAP (re)places the baton; a DRAG sets the commanded
-  // ship's course toward the release point.
-  private dragPointer: number | null = null;
-  private dragDownScreen: { x: number; y: number } | null = null;
-  private dragMoved = false;
+  // The live Piece binding (device path): which physical contactId currently
+  // commands each side's baton, so two Pieces (one per side, or per player) are
+  // tracked and lifted independently. Keyed by contactId — NEVER by glyphId (a
+  // Piece *type* id). Mouse-placed batons have no entry here.
+  private readonly batonContact = new Map<Faction, number>();
+  // Latch state for rotate-to-steer: the Piece orientation (degrees) at which we
+  // last wrote the squadron's heading. We only re-apply when the Piece has
+  // turned past Config.BatonSteerToleranceDeg, so a resting/held heading is
+  // never re-clamped to the Piece every frame.
+  private readonly batonSteerDeg = new Map<Faction, number>();
+  // Whether each side's baton is currently HELD (hand on the Piece, or a mouse
+  // steer-drag in progress) — drives the brighter "being commanded" highlight.
+  private readonly batonHeld = new Map<Faction, boolean>();
 
-  private gameOver = false;
+  // True on real Board hardware: device contacts are Pieces (batons) + fingers
+  // (trim only). False in the browser preview, where the mouse emulates the full
+  // place / steer / trim / dismiss cycle.
+  private onDevice = false;
+
+  // Browser mouse-emulation gesture state (intent-by-target, no brittle global
+  // tap/drag threshold). A press that starts on a baton roundel begins a
+  // steer-drag (or, if it doesn't move, dismisses); a press on open sea places.
+  private mouseGesture: "roundel" | "sea" | null = null;
+  private mouseFaction: Faction | null = null;
+  private mousePointer: number | null = null;
+  private mouseDownScreen: { x: number; y: number } | null = null;
+  private mouseMoved = false;
+
+  // ---- Phase / setup -----------------------------------------------------
+  private phase: GamePhase = GamePhase.Setup;
+  /** Which human sides have placed their command piece this match. */
+  private readonly placed = new Map<Faction, boolean>();
+  /** Counting down to battle start once every required side is ready. */
+  private countingDown = false;
+  private setupCountdown = 0;
+
   private winner = Faction.Neutral;
   private gameOverTimer = 0;
 
@@ -122,9 +185,19 @@ export class Game {
   // reuses it). The HUD persona buttons set this and start a fresh game.
   private aiPersona: AIPersona = AIPersona.Standard;
 
-  constructor(renderer: Renderer, hud: Hud) {
+  // OS pause overlay (Board hardware menu button). Null in the browser preview;
+  // on a Board it's set before `start()` so phase transitions can drive it.
+  private pauseMenu: PauseMenu | null = null;
+
+  constructor(renderer: Renderer, hud: Hud, onDevice = false) {
     this.renderer = renderer;
     this.hud = hud;
+    this.onDevice = onDevice;
+  }
+
+  /** Attaches the OS pause-overlay controller (no-op driver in the browser). */
+  setPauseMenu(pauseMenu: PauseMenu): void {
+    this.pauseMenu = pauseMenu;
   }
 
   start(): void {
@@ -137,15 +210,16 @@ export class Game {
     this.control.set(Faction.FrancoSpanish, ControlMode.AI);
     this.ai.set(Faction.FrancoSpanish, new FleetAI(Faction.FrancoSpanish, this.aiPersona));
 
-    this.spawnAllFleets();
     this.hud.setSecondPlayerMode(false);
     this.hud.setActivePersona(this.aiPersona);
+    this.enterSetup();
   }
 
   // ---- Frame loop --------------------------------------------------------
 
   update(dt: number): void {
-    if (!this.gameOver) {
+    if (this.phase === GamePhase.Playing) {
+      // The live battle: wind, AI, movement, collision, gunnery, win check.
       this.wind.tick(dt);
       this.tickAI();
       this.tickShips(dt);
@@ -153,143 +227,483 @@ export class Game {
       this.combat.tick(this.ships, this.renderer);
       this.cullSunkShips();
       this.checkWinCondition();
-    } else {
+    } else if (this.phase === GamePhase.GameOver) {
       this.gameOverTimer += dt;
+    } else {
+      // Setup: the simulation is paused (no movement/combat/AI) while players
+      // place their command pieces; only the ready countdown advances.
+      this.tickSetup(dt);
     }
 
     this.refreshCommandVisuals();
     this.updateCourseVisuals();
     this.refreshBatonVisuals();
+    this.refreshSetupVisuals();
     this.renderer.updateEffects(dt);
-    this.hud.refresh(this.wind, this.ships, this.gameOver, this.winner);
+    this.hud.refresh(this.wind, this.ships, this.phase === GamePhase.GameOver, this.winner);
   }
 
   // ---- Input -------------------------------------------------------------
 
   onPointerSamples(samples: ReadonlyArray<PointerSample>): void {
     for (const s of samples) {
-      if (s.isGlyph) {
+      // On-device Piece map aid: log each recognised Piece the first frame it
+      // appears, so the user can see which physical robot maps to which glyphId
+      // (ids are only known empirically). Gated to the device + Pieces so the
+      // browser console stays quiet. Fingers (glyphId 0) are never logged here.
+      if (this.onDevice && s.isGlyph && s.glyphId > 0 && s.phase === "began") {
+        console.log(
+          `[baton] Piece placed: glyphId=${s.glyphId} contactId=${s.contactId} ` +
+            `touched=${s.touched} phase=${this.phase} at (${Math.round(s.position.x)}, ${Math.round(s.position.y)})`,
+        );
+      }
+
+      // Setup phase: a contact (mouse click or Glyph placement) on a side's pad
+      // places that side's command piece. Both input paths share this handler.
+      if (this.phase === GamePhase.Setup) {
+        this.handleSetupContact(s);
+        continue;
+      }
+
+      // Game over: a tap (after a short delay) starts a fresh match.
+      if (this.phase === GamePhase.GameOver) {
+        if (s.phase === "began" && this.gameOverTimer >= 2) this.restart();
+        continue;
+      }
+
+      // Playing.
+      // A physical Piece (Glyph) drives the Baton of Command lifecycle. Gate on
+      // glyphId > 0 so a finger reported without a Piece type never trips piece
+      // logic (per the Piece-interaction guide); such fingers fall through to
+      // the finger-trim path below.
+      if (s.isGlyph && s.glyphId > 0) {
         this.handleGlyph(s);
         continue;
       }
+
+      // On hardware, every non-Piece contact is a FINGER: while a baton is on
+      // the board fingers only ever operate the floating trim controls — they
+      // never place, move, steer, or dismiss command (the Piece owns that).
+      if (this.onDevice) {
+        this.handleFinger(s);
+        continue;
+      }
+
+      // Browser preview: the mouse emulates the whole Piece cycle.
       const world = this.renderer.screenToWorld(s.position.x, s.position.y);
       if (s.phase === "began") {
-        if (this.gameOver) {
-          if (this.gameOverTimer >= 2) this.restart();
-          continue;
-        }
-        this.handleDown(world, s);
+        this.handleMouseDown(world, s);
       } else if (s.phase === "moved") {
-        this.handleMove(world, s);
+        this.handleMouseMove(world, s);
       } else if (s.phase === "ended") {
-        this.handleUp(world, s);
+        this.handleMouseUp(world, s);
       }
     }
+  }
+
+  // ---- Setup phase -------------------------------------------------------
+
+  /** (Re)enters the Setup phase: fresh fleets, no batons, no one placed yet. */
+  private enterSetup(): void {
+    this.phase = GamePhase.Setup;
+    this.winner = Faction.Neutral;
+    this.gameOverTimer = 0;
+    this.countingDown = false;
+    this.setupCountdown = 0;
+    this.placed.clear();
+    this.resetMouseGesture();
+    this.renderer.hideCoursePreview();
+    this.spawnAllFleets();
+    // No live match yet: drop any in-match pause context (Restart/Quit overlay).
+    this.pauseMenu?.clear();
   }
 
   /**
-   * Pointer down. Command-control buttons (sail / ammo) of the CURRENTLY
-   * commanded ship take priority on a tap; otherwise we arm a tap-or-drag
-   * gesture (tap = move the baton, drag = set the commanded ship's course).
+   * A Setup contact: on its first frame ("began"), if it lands on a not-yet-ready
+   * human side's pad, that side places its command piece. Drives both the mouse
+   * fallback (click) and, on hardware, a Glyph contact appearing on the pad.
    */
-  private handleDown(world: Vec2, s: PointerSample): void {
-    // 1) Command controls (sail / ammo) of the commanded ship — these are the
-    // baton's command surface, shown in the command bubble.
-    const cmd = this.commandedShip;
-    if (cmd && cmd.isAlive) {
-      const v = cmd.view as ShipView | null;
-      if (v) {
-        if (v.ammoBadgeHit(world)) {
-          cmd.cycleAmmo();
-          return; // consumed: not a tap/drag
-        }
-        if (v.sailBadgeHit(world)) {
-          cmd.setSail(nextSail(cmd.sail));
-          return; // consumed: not a tap/drag
-        }
+  private handleSetupContact(s: PointerSample): void {
+    if (s.phase !== "began") return;
+    const world = this.renderer.screenToWorld(s.position.x, s.position.y);
+    for (const faction of PLAYABLE_FACTIONS) {
+      if (!this.needsPlacement(faction)) continue;
+      if (distance(world, padPosition(faction)) <= Config.SetupPadRadius) {
+        this.placeCommandPiece(faction);
+        return;
       }
     }
-
-    // 2) Arm a tap-or-drag gesture (resolved on pointer up).
-    this.dragPointer = s.contactId;
-    this.dragDownScreen = { x: s.position.x, y: s.position.y };
-    this.dragMoved = false;
   }
 
-  private handleMove(world: Vec2, s: PointerSample): void {
-    if (s.contactId !== this.dragPointer || !this.dragDownScreen) return;
+  /** A human side that hasn't placed its command piece yet. */
+  private needsPlacement(faction: Faction): boolean {
+    return this.isHuman(faction) && !this.placed.get(faction);
+  }
 
-    if (!this.dragMoved) {
-      const dx = s.position.x - this.dragDownScreen.x;
-      const dy = s.position.y - this.dragDownScreen.y;
-      if (Math.hypot(dx, dy) > K_DRAG_THRESHOLD_PX) this.dragMoved = true;
-    }
+  /** True once a side is ready: AI sides are auto-ready; humans must place. */
+  private isReady(faction: Faction): boolean {
+    return this.isHuman(faction) ? this.placed.get(faction) === true : true;
+  }
 
-    // A drag previews the commanded ship's new course.
-    const cmd = this.commandedShip;
-    if (this.dragMoved && cmd && cmd.isAlive) {
-      this.renderer.showCoursePreview(cmd.position, world, accentColor(cmd.faction));
+  /** Every required (human) side has placed → the battle may begin. */
+  private allReady(): boolean {
+    return PLAYABLE_FACTIONS.every((f) => this.isReady(f));
+  }
+
+  /**
+   * Places a side's command piece on its pad: marks it ready, and SEEDS that
+   * side's Baton of Command at the pad so the placed piece immediately takes
+   * command of the fleet around it. When every required side is ready this kicks
+   * off the short countdown into the battle.
+   */
+  private placeCommandPiece(faction: Faction): void {
+    this.placed.set(faction, true);
+    this.control.set(faction, ControlMode.Human);
+    this.seedBaton(faction, padPosition(faction));
+    if (this.allReady() && !this.countingDown) {
+      this.countingDown = true;
+      this.setupCountdown = Config.SetupCountdownSeconds;
     }
   }
 
-  private handleUp(world: Vec2, s: PointerSample): void {
-    if (s.contactId !== this.dragPointer) return;
+  private tickSetup(dt: number): void {
+    if (!this.countingDown) return;
+    this.setupCountdown -= dt;
+    if (this.setupCountdown <= 0) {
+      this.countingDown = false;
+      this.setupCountdown = 0;
+      this.phase = GamePhase.Playing;
+      // Battle is live: register the in-match pause context so the hardware menu
+      // button offers Restart / Quit on a Board.
+      this.pauseMenu?.enterPlaying();
+    }
+  }
 
-    if (this.dragMoved) {
-      // Drag → set the commanded ship's course toward the release point.
-      const cmd = this.commandedShip;
-      if (cmd && cmd.isAlive) cmd.setCourseToPoint(world);
-      this.renderer.hideCoursePreview();
+  // ---- Baton lifecycle: Piece (device) path -----------------------------
+
+  /**
+   * A physical Piece (Glyph) IS the Baton of Command, modelled as a small state
+   * machine keyed by its `contactId`:
+   *   - Placed (Began, contact not bound yet): bind it to the nearest human
+   *     side and capture that squadron ONCE (so the sphere ring means what it
+   *     shows); the Piece position is the baton position.
+   *   - Held/Resting (Moved/Stationary): the baton tracks the Piece position;
+   *     while HELD (a hand on the Piece) rotating it steers the squadron, then
+   *     the heading LATCHES (never re-clamped to a resting Piece).
+   *   - Lifted (Ended/Canceled, synthesised by input.ts when the contactId
+   *     leaves the per-frame snapshot, and on pause): dismiss the baton.
+   */
+  private handleGlyph(s: PointerSample): void {
+    if (s.phase === "ended") {
+      this.clearBatonByContact(s.contactId);
+      return;
+    }
+
+    const world = this.renderer.screenToWorld(s.position.x, s.position.y);
+    let faction = this.factionForContact(s.contactId);
+
+    if (faction === null) {
+      // Placement: bind this Piece to the nearest human side and capture once.
+      faction = this.nearestHumanFaction(world);
+      if (faction === null) return; // no friendly fleet in range → not a baton
+      this.bindBaton(faction, s.contactId, world);
     } else {
-      // Tap → (re)place the Baton of Command on the sea and take command of the
-      // nearest human ship within range.
+      // Slide: keep the baton glued to the Piece, but do NOT re-capture the
+      // commanded set (membership is frozen at placement).
+      this.batonPos.set(faction, { x: world.x, z: world.z });
+    }
+
+    // Rotate-to-steer (latched, held-gated). `orientation` is radians here;
+    // the Board reports DEGREES, which we recover for the steer maths.
+    this.batonHeld.set(faction, s.touched);
+    if (s.touched) {
+      this.steerFromOrientation(faction, s.orientation);
+    }
+  }
+
+  /** The side whose baton is currently bound to `contactId`, or null. */
+  private factionForContact(contactId: number): Faction | null {
+    for (const [faction, id] of this.batonContact) {
+      if (id === contactId) return faction;
+    }
+    return null;
+  }
+
+  /**
+   * Binds a Piece (by `contactId`) to a side's baton, anchors it, and captures
+   * that side's commanded squadron ONCE. Any baton that side already held (from
+   * a different contact) is replaced by this fresh placement.
+   */
+  private bindBaton(faction: Faction, contactId: number, world: Vec2): void {
+    this.batonContact.set(faction, contactId);
+    this.seedBaton(faction, world);
+    // Reset the steer latch so the first genuine rotation (not the placement
+    // orientation) is what turns the fleet.
+    this.batonSteerDeg.delete(faction);
+  }
+
+  /** Dismisses the baton bound to `contactId` (Piece lifted / canceled). */
+  private clearBatonByContact(contactId: number): void {
+    const faction = this.factionForContact(contactId);
+    if (faction !== null) this.clearBaton(faction);
+  }
+
+  /**
+   * Tears down a side's baton: removes its bubble, sphere ring, and floating
+   * controls, and unbinds the Piece. The commanded ships KEEP their last ordered
+   * heading and sail on — lifting the baton dismisses command, it doesn't
+   * capsize the fleet (docs/baton-touch-scheme.md §4.1).
+   */
+  private clearBaton(faction: Faction): void {
+    this.batonPos.delete(faction);
+    this.commandedShips.delete(faction);
+    this.batonContact.delete(faction);
+    this.batonSteerDeg.delete(faction);
+    this.batonHeld.delete(faction);
+  }
+
+  /**
+   * Latched rotate-to-steer. `orientationRad` is the Piece facing in radians;
+   * we convert to degrees and only re-issue the squadron heading when the Piece
+   * has turned past Config.BatonSteerToleranceDeg since the last write — which
+   * doubles as the rotation dead-band and stops a held/resting heading from
+   * being re-clamped to Piece jitter every frame.
+   */
+  private steerFromOrientation(faction: Faction, orientationRad: number): void {
+    const orientationDeg = normalize360(orientationRad * (180 / Math.PI));
+    const last = this.batonSteerDeg.get(faction);
+    if (last !== undefined && angleDifference(orientationDeg, last) < Config.BatonSteerToleranceDeg) {
+      return; // within dead-band → leave the latched heading alone
+    }
+    this.batonSteerDeg.set(faction, orientationDeg);
+    // Map Piece facing → fleet heading. The sign is POSITIVE (heading =
+    // +orientationDeg): the negated convention read inverted on hardware, so
+    // rotating the physical Piece now steers the squadron intuitively. The mouse
+    // steer-drag path (vectorToHeading in handleMouseMove) is independent and
+    // unaffected by this change.
+    const heading = normalize360(orientationDeg);
+    for (const cmd of this.aliveCommanded(faction)) cmd.setTargetHeading(heading);
+  }
+
+  /**
+   * Anchors a specific side's baton at a point and commands that side's alive
+   * ships within the sphere of influence (captured ONCE here). Used by live
+   * placement, mouse placement, and to SEED a baton from a command piece during
+   * Setup.
+   */
+  private seedBaton(faction: Faction, point: Vec2): void {
+    this.batonPos.set(faction, { x: point.x, z: point.z });
+    this.commandedShips.set(faction, this.pickCommandedShips(faction, point));
+  }
+
+  // ---- Baton lifecycle: finger trim (device) ----------------------------
+
+  /**
+   * A finger contact on hardware only ever trims the floating controls of a
+   * resting baton — it never places, moves, steers, or dismisses command (the
+   * Piece owns that). Taps only (the first frame); ignored if it misses every
+   * control disc.
+   */
+  private handleFinger(s: PointerSample): void {
+    if (s.phase !== "began") return;
+    const world = this.renderer.screenToWorld(s.position.x, s.position.y);
+    this.tryTrimControls(world);
+  }
+
+  /**
+   * Hit-tests a world point against every baton's floating sail/ammo controls;
+   * trims the matching side's whole commanded squadron and returns true if a
+   * control was hit, else false. Shared by finger taps and mouse clicks.
+   */
+  private tryTrimControls(world: Vec2): boolean {
+    for (const [faction, pos] of this.batonPos) {
+      if (this.aliveCommanded(faction).length === 0) continue;
+      const panel = this.renderer.commandPanelLayout(pos);
+      if (distance(world, panel.sail) <= panel.r) {
+        this.cycleGroupSail(faction);
+        return true;
+      }
+      if (distance(world, panel.ammo) <= panel.r) {
+        this.cycleGroupAmmo(faction);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ---- Baton lifecycle: mouse emulation (browser) -----------------------
+
+  /**
+   * Browser mouse-down, resolved by INTENT-BY-TARGET (no brittle global tap/drag
+   * threshold): a press on a control trims; a press on a baton roundel arms a
+   * steer-drag (or dismisses if it doesn't move); a press on open sea arms a
+   * place (resolved on release).
+   */
+  private handleMouseDown(world: Vec2, s: PointerSample): void {
+    this.resetMouseGesture();
+
+    // 1) Floating trim controls take priority.
+    if (this.tryTrimControls(world)) return;
+
+    // 2) On a baton roundel → steer-drag / dismiss.
+    const onRoundel = this.batonAt(world);
+    if (onRoundel !== null) {
+      this.mouseGesture = "roundel";
+      this.mouseFaction = onRoundel;
+      this.mousePointer = s.contactId;
+      this.mouseDownScreen = { x: s.position.x, y: s.position.y };
+      this.mouseMoved = false;
+      this.batonHeld.set(onRoundel, true);
+      return;
+    }
+
+    // 3) Open sea → arm a placement.
+    this.mouseGesture = "sea";
+    this.mousePointer = s.contactId;
+    this.mouseDownScreen = { x: s.position.x, y: s.position.y };
+    this.mouseMoved = false;
+  }
+
+  private handleMouseMove(world: Vec2, s: PointerSample): void {
+    if (s.contactId !== this.mousePointer || !this.mouseDownScreen) return;
+
+    if (!this.mouseMoved) {
+      const dx = s.position.x - this.mouseDownScreen.x;
+      const dy = s.position.y - this.mouseDownScreen.y;
+      if (Math.hypot(dx, dy) > Config.BatonMouseDragThresholdPx) this.mouseMoved = true;
+    }
+    if (!this.mouseMoved) return;
+
+    // Dragging a roundel steers: the commanded squadron heads along the bearing
+    // from the baton to the cursor. Applied live so it latches on release.
+    if (this.mouseGesture === "roundel" && this.mouseFaction !== null) {
+      const faction = this.mouseFaction;
+      const pos = this.batonPos.get(faction);
+      const alive = this.aliveCommanded(faction);
+      if (pos && alive.length > 0) {
+        const dir = sub(world, pos);
+        if (magnitude(dir) > 0.001) {
+          const heading = vectorToHeading(dir);
+          for (const cmd of alive) cmd.setTargetHeading(heading);
+        }
+        this.renderer.showCoursePreview(
+          alive.map((c) => c.position),
+          world,
+          accentColor(faction),
+        );
+      }
+    }
+  }
+
+  private handleMouseUp(world: Vec2, s: PointerSample): void {
+    if (s.contactId !== this.mousePointer) {
+      this.resetMouseGesture();
+      return;
+    }
+
+    if (this.mouseGesture === "roundel" && this.mouseFaction !== null) {
+      if (this.mouseMoved) {
+        this.renderer.hideCoursePreview(); // heading already latched
+        this.batonHeld.set(this.mouseFaction, false);
+      } else {
+        // A tap on the roundel dismisses that side's baton (emulates a lift).
+        this.clearBaton(this.mouseFaction);
+      }
+    } else if (this.mouseGesture === "sea" && !this.mouseMoved) {
+      // A click on open sea places / re-places the baton for the nearest human
+      // side and captures its squadron afresh.
       this.placeBaton(world);
     }
 
-    this.resetDrag();
+    this.resetMouseGesture();
   }
 
-  private resetDrag(): void {
-    this.dragPointer = null;
-    this.dragDownScreen = null;
-    this.dragMoved = false;
+  private resetMouseGesture(): void {
+    this.mouseGesture = null;
+    this.mouseFaction = null;
+    this.mousePointer = null;
+    this.mouseDownScreen = null;
+    this.mouseMoved = false;
+  }
+
+  /** The side whose baton roundel contains `world`, or null. */
+  private batonAt(world: Vec2): Faction | null {
+    for (const [faction, pos] of this.batonPos) {
+      if (distance(world, pos) <= Config.BatonRoundelHitRadius) return faction;
+    }
+    return null;
   }
 
   /**
-   * Places the Baton of Command at a sea point and commands the nearest human-
-   * controlled ship within Config.BatonCommandRadius (or none, if the sea is
-   * empty there — the baton marker still shows). Shared by mouse taps and, on
-   * Board hardware, Glyph contacts.
+   * Places (or re-places) a Baton of Command at a sea point for the side whose
+   * nearest ship is closest to it, capturing that side's alive ships within the
+   * sphere of influence. Browser-only (mouse) entry point: device placement is
+   * driven by the Piece in handleGlyph. A click with no friendly side in range
+   * is ignored.
    */
   private placeBaton(world: Vec2): void {
-    this.batonPos = { x: world.x, z: world.z };
-    this.commandedShip = this.pickCommandedShip(world);
+    const faction = this.nearestHumanFaction(world);
+    if (faction === null) return;
+    this.seedBaton(faction, world);
+    // A mouse-placed baton is not bound to a physical Piece; clear any stale
+    // binding / held / latch state from a previous owner.
+    this.batonContact.delete(faction);
+    this.batonSteerDeg.delete(faction);
+    this.batonHeld.set(faction, false);
   }
 
-  private handleGlyph(s: PointerSample): void {
-    // A physical Glyph piece acts as the baton: its position commands the nearest
-    // human ship and its orientation sets that ship's course.
-    const world = this.renderer.screenToWorld(s.position.x, s.position.y);
-    this.placeBaton(world);
-    const cmd = this.commandedShip;
-    if (cmd && cmd.isAlive) {
-      cmd.setTargetHeading(normalize360(-s.orientation * (180 / Math.PI)));
-    }
-  }
-
-  /** Nearest alive, human-controlled ship within the baton's command radius. */
-  private pickCommandedShip(point: Vec2): Ship | null {
-    let best: Ship | null = null;
-    let bestDist = Config.BatonCommandRadius;
+  /** The human side whose nearest ship is closest to a point, within the baton
+   *  radius — or null if no human ship is in range. */
+  private nearestHumanFaction(point: Vec2): Faction | null {
+    let nearestFaction: Faction | null = null;
+    let nearestDist = Config.BatonCommandRadius;
     for (const ship of this.ships) {
       if (!ship.isAlive || !this.isHuman(ship.faction)) continue;
       const d = distance(point, ship.position);
-      if (d <= bestDist) {
-        bestDist = d;
-        best = ship;
+      if (d <= nearestDist) {
+        nearestDist = d;
+        nearestFaction = ship.faction;
       }
     }
-    return best;
+    return nearestFaction;
+  }
+
+  /** A side's alive ships within the baton's sphere of influence at `point`. */
+  private pickCommandedShips(faction: Faction, point: Vec2): Ship[] {
+    return this.ships.filter(
+      (ship) =>
+        ship.isAlive &&
+        ship.faction === faction &&
+        distance(point, ship.position) <= Config.BatonCommandRadius,
+    );
+  }
+
+  /** A side's currently-commanded ships that are still alive. */
+  private aliveCommanded(faction: Faction): Ship[] {
+    return (this.commandedShips.get(faction) ?? []).filter((c) => c.isAlive);
+  }
+
+  /** Every commanded ship across all sides (alive). */
+  private allCommanded(): Ship[] {
+    const out: Ship[] = [];
+    for (const faction of this.commandedShips.keys()) out.push(...this.aliveCommanded(faction));
+    return out;
+  }
+
+  /** Group sail order: cycles a side's whole commanded squadron to one setting. */
+  private cycleGroupSail(faction: Faction): void {
+    const alive = this.aliveCommanded(faction);
+    if (alive.length === 0) return;
+    const next = nextSail(alive[0].sail); // representative drives a uniform order
+    for (const cmd of alive) cmd.setSail(next);
+  }
+
+  /** Group ammunition order: cycles a side's commanded squadron to one shot type. */
+  private cycleGroupAmmo(faction: Faction): void {
+    const alive = this.aliveCommanded(faction);
+    if (alive.length === 0) return;
+    const next = nextAmmo(alive[0].ammo);
+    for (const cmd of alive) cmd.setAmmo(next);
   }
 
   // ---- Setup -------------------------------------------------------------
@@ -299,9 +713,12 @@ export class Game {
       (ship.view as ShipView | null)?.destroy();
     }
     this.ships.length = 0;
-    // A fresh battle starts with no baton placed and nothing commanded.
-    this.batonPos = null;
-    this.commandedShip = null;
+    // A fresh battle starts with no batons placed and nothing commanded.
+    this.batonPos.clear();
+    this.commandedShips.clear();
+    this.batonContact.clear();
+    this.batonSteerDeg.clear();
+    this.batonHeld.clear();
 
     // Both fleets start tucked into a BOTTOM corner of the arena (negative Z is
     // the bottom of the screen — see Renderer.worldToScreen), drawn up in a
@@ -474,11 +891,11 @@ export class Game {
     for (let i = this.ships.length - 1; i >= 0; i--) {
       const ship = this.ships[i];
       if (ship.state === ShipState.Gone) {
-        if (this.commandedShip === ship) this.commandedShip = null;
         (ship.view as ShipView | null)?.destroy();
         this.ships.splice(i, 1);
       }
     }
+    this.pruneCommanded((s) => s.state !== ShipState.Gone);
   }
 
   private checkWinCondition(): void {
@@ -488,8 +905,10 @@ export class Game {
     const francoAfloat = this.hasLivingShips(Faction.FrancoSpanish);
     if (britishAfloat && francoAfloat) return;
 
-    this.gameOver = true;
+    this.phase = GamePhase.GameOver;
     this.gameOverTimer = 0;
+    // Match is over: drop the in-match pause context.
+    this.pauseMenu?.clear();
     this.winner = britishAfloat
       ? Faction.British
       : francoAfloat
@@ -497,66 +916,130 @@ export class Game {
         : Faction.Neutral;
   }
 
+  /** Rematch: a new match always begins back in Setup (re-require placement). */
   restart(): void {
-    this.gameOver = false;
-    this.winner = Faction.Neutral;
-    this.gameOverTimer = 0;
-    this.resetDrag();
-    this.renderer.hideCoursePreview();
     this.wind = new Wind(initialWindFromDegrees());
-    this.spawnAllFleets();
+    this.enterSetup();
   }
 
   // ---- Selection / queries ----------------------------------------------
 
-  private refreshCommandVisuals(): void {
-    // Drop command if the commanded ship is no longer a valid, human-controlled,
-    // living ship (sunk, or switched to AI in 2-player).
-    const cmd = this.commandedShip;
-    if (cmd && (!cmd.isAlive || !this.isHuman(cmd.faction))) this.commandedShip = null;
+  /** Drops ships failing `keep` from every side's commanded set in place. */
+  private pruneCommanded(keep: (s: Ship) => boolean): void {
+    for (const [faction, list] of this.commandedShips) {
+      this.commandedShips.set(
+        faction,
+        list.filter(keep),
+      );
+    }
+  }
 
+  private refreshCommandVisuals(): void {
+    // Drop ships from the commanded sets that are no longer valid (sunk, or
+    // switched to AI in 2-player).
+    this.pruneCommanded((s) => s.isAlive && this.isHuman(s.faction));
+    const commandedSet = new Set(this.allCommanded());
     for (const ship of this.ships) {
-      const commanded = ship === this.commandedShip && ship.isAlive;
+      const commanded = commandedSet.has(ship) && ship.isAlive;
       (ship.view as ShipView | null)?.setCommanded(commanded, ship.faction);
     }
   }
 
   private updateCourseVisuals(): void {
-    const cmd = this.commandedShip;
-    if (this.gameOver || !cmd || !cmd.isAlive) {
+    const commanded = this.phase === GamePhase.GameOver ? [] : this.allCommanded();
+    if (commanded.length === 0) {
       this.renderer.hideHeadingLine();
       return;
     }
-    this.renderer.showHeadingLine(
-      cmd.position,
-      cmd.targetHeadingDeg,
-      cmd.stats.length * 2.5,
-      accentColor(cmd.faction),
-    );
+    const lines = commanded.map((s) => ({
+      from: s.position,
+      headingDeg: s.targetHeadingDeg,
+      length: s.stats.length * 2.5,
+      color: accentColor(s.faction),
+    }));
+    this.renderer.showHeadingLines(lines);
   }
 
   private refreshBatonVisuals(): void {
-    if (this.gameOver || !this.batonPos) {
-      this.renderer.hideBaton();
+    if (this.phase === GamePhase.GameOver || this.batonPos.size === 0) {
+      this.renderer.hideBatons();
+      this.renderer.hideCommandPanels();
       return;
     }
-    const cmd = this.commandedShip;
-    this.renderer.showBaton(this.batonPos, cmd && cmd.isAlive ? cmd.position : null);
+    const batons: { pos: Vec2; color: number; held: boolean }[] = [];
+    const panels: { pos: Vec2; sail: number; ammo: number }[] = [];
+    for (const [faction, pos] of this.batonPos) {
+      const alive = this.aliveCommanded(faction);
+      batons.push({
+        pos,
+        color: accentColor(faction),
+        held: this.batonHeld.get(faction) === true,
+      });
+      // Per-side group command panel, reflecting that squadron's (uniform) sail +
+      // ammo. Only while playing (no trimming during setup) and with ships in hand.
+      if (this.phase === GamePhase.Playing && alive.length > 0) {
+        panels.push({ pos, sail: alive[0].sail, ammo: alive[0].ammo });
+      }
+    }
+    this.renderer.showBatons(batons, Config.BatonCommandRadius);
+    this.renderer.showCommandPanels(panels);
+  }
+
+  /** Draws the Setup placement pads (one per side) while in Setup; hides them
+   *  otherwise. Each pad shows its side, a prompt, and a ready/AI state. */
+  private refreshSetupVisuals(): void {
+    if (this.phase !== GamePhase.Setup) {
+      this.renderer.hideSetupPads();
+      this.hud.setSetupOverlay(false, "", "");
+      return;
+    }
+    const pads = PLAYABLE_FACTIONS.map((faction) => {
+      const human = this.isHuman(faction);
+      const ready = this.isReady(faction);
+      const subtitle = !human
+        ? `AI · ${personaName(this.aiPersona)}`
+        : ready
+          ? "✓ In command"
+          : "Place your command piece";
+      return {
+        pos: padPosition(faction),
+        radius: Config.SetupPadRadius,
+        color: accentColor(faction),
+        title: displayName(faction),
+        subtitle,
+        ready,
+      };
+    });
+    this.renderer.showSetupPads(pads);
+    this.hud.setSetupOverlay(true, this.setupTitle(), this.setupStatus());
+  }
+
+  private setupTitle(): string {
+    return this.countingDown ? "All hands on deck" : "Take Command";
+  }
+
+  private setupStatus(): string {
+    if (this.countingDown) {
+      return `All sides ready — battle stations in ${Math.ceil(this.setupCountdown)}…`;
+    }
+    const waiting = PLAYABLE_FACTIONS.filter((f) => this.needsPlacement(f)).map(displayName);
+    if (waiting.length === 0) return "Standing by…";
+    return `Waiting for ${waiting.join(" & ")} to place their command piece…`;
   }
 
   toggleSecondPlayer(): void {
     const nowHuman = this.control.get(Faction.FrancoSpanish) !== ControlMode.Human;
     this.control.set(Faction.FrancoSpanish, nowHuman ? ControlMode.Human : ControlMode.AI);
-    // If the commanded ship just reverted to AI control, drop the baton's command.
-    if (!nowHuman && this.commandedShip?.faction === Faction.FrancoSpanish) {
-      this.commandedShip = null;
-    }
     this.hud.setSecondPlayerMode(nowHuman);
+    // Changing who's required restarts into Setup so the new line-up always
+    // begins by placing command pieces.
+    this.restart();
   }
 
   /**
-   * Starts a fresh game with the Franco-Spanish fleet under AI control using the
-   * given persona. The persona is persisted so the Rematch button reuses it.
+   * Selects the opponent persona (persisted so Rematch reuses it), puts the
+   * Franco-Spanish fleet under AI control, and restarts into Setup so the player
+   * re-places their command piece against the chosen brain.
    */
   selectPersona(persona: AIPersona): void {
     this.aiPersona = persona;

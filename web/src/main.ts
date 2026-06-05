@@ -16,6 +16,7 @@ import { Hud } from "./ui/hud";
 import { Game } from "./core/game";
 import { createInputAdapter } from "./board/input";
 import { loadBoard } from "./board/sdk";
+import { PauseMenu } from "./board/pauseMenu";
 import { preloadArt } from "./rendering/assets";
 
 async function main(): Promise<void> {
@@ -25,19 +26,6 @@ async function main(): Promise<void> {
   const onDevice = !!board?.isOnDevice;
   document.body.classList.toggle("board-device", onDevice);
   document.body.classList.toggle("browser-preview", !onDevice);
-
-  // Guard SDK calls with the on-device check so browser preview always works.
-  if (board?.isOnDevice && board.pause) {
-    try {
-      board.pause.setContext({
-        gameName: "Trafalgar — Age of Sail",
-        offerSaveOption: false,
-        customButtons: [{ id: "rematch", title: "Rematch", icon: "circulararrow" }],
-      });
-    } catch {
-      /* non-fatal */
-    }
-  }
 
   const renderer = new Renderer();
   await renderer.init(canvas);
@@ -54,7 +42,18 @@ async function main(): Promise<void> {
     () => game.restart(),
     (persona) => game.selectPersona(persona),
   );
-  game = new Game(renderer, hud);
+  game = new Game(renderer, hud, onDevice);
+
+  // Wire the OS pause overlay (Board hardware menu button). The PauseMenu is a
+  // no-op driver in the browser; on a Board the game drives it across phase
+  // transitions (set context in Playing, clear on game over / Setup). Attach it
+  // before `start()` so the initial Setup phase can clear any stale context.
+  game.setPauseMenu(
+    new PauseMenu(board, {
+      onRestart: () => game.restart(),
+    }),
+  );
+
   game.start();
 
   const disposeInput = await createInputAdapter(canvas, (samples) =>

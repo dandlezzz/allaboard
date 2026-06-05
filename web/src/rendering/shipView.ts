@@ -746,8 +746,11 @@ export class ShipView implements ShipViewHooks {
     this.commanded = commanded;
     this.commandGfx.visible = commanded;
     if (commanded) this.commandGfx.tint = accentColor(faction);
-    this.commandControls.visible = commanded;
-    this.controlsContainer.visible = commanded;
+    // Group commands (sail / ammo / course) are issued from a single panel at the
+    // baton, so a commanded ship shows ONLY its glowing bubble — no per-ship
+    // control badges (which would be a second, competing control surface).
+    this.commandControls.visible = false;
+    this.controlsContainer.visible = false;
     if (!commanded) {
       this.commandPulse = 0;
       this.commandGfx.alpha = 1;

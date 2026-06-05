@@ -33,11 +33,12 @@ export const CameraOrthoSize = ArenaHalfZ / (1 - ArenaSafeInset);
  *  overlap regardless of the class mix). */
 export const ColumnGap = 2 * ShipScale;
 
-/** Extra multiplier on hull size (length/beam) ONLY. Reduced to 0.75× of the
- *  previous 1.3125 (= 0.984375); selection radius and sprite scale track
+/** Extra multiplier on hull size (length/beam) ONLY. Reduced again to 0.75× of
+ *  the previous 1.3125 × 0.75 (= 0.5625 × the original 1.3125 ≈ 0.738); selection
+ *  radius, sprite scale, the collision capsule and the command bubble all track
  *  `length`, so everything stays coherent while arena/range/speed (ShipScale)
  *  are unchanged. */
-export const HullSizeBoost = 1.3125 * 0.75;
+export const HullSizeBoost = 1.3125 * 0.75 * 0.75;
 
 // ---- Wind ----
 
@@ -170,11 +171,76 @@ export const ShipSelectRadius = 3.5 * ShipScale;
 
 // ---- Baton of Command ----
 
-/** How close (world units) the Baton of Command must be placed to a friendly,
- *  human-controlled ship to take command of it. The baton commands the NEAREST
- *  such ship within this radius at the moment it is placed (≈ a couple of ship
- *  lengths, so clicking on or just beside a ship commands it). */
-export const BatonCommandRadius = 22 * ShipScale;
+/** Sphere-of-influence radius (world units) around the Baton of Command. Every
+ *  alive, human-controlled friendly ship of ONE side within this radius at
+ *  placement time comes under command, so a single baton moves a whole squadron
+ *  together. Deliberately large (a full fleet column is ≈ 500 units, and ships
+ *  are now smaller) so the sphere gathers several ships at once; a literal 3× of
+ *  the old value would exceed the arena, so it is capped to a value whose ring is
+ *  still a clear sub-region of the field. */
+export const BatonCommandRadius = 15 * ShipScale;
+
+// ---- Baton lifecycle: rotate-to-steer, controls, mouse emulation ----
+// The Baton of Command is a Piece-centric controller: set the Piece down to take
+// command (capturing its squadron once), rotate it to steer, tap the floating
+// controls with a finger to trim, and lift it to dismiss. These knobs tune that
+// scheme; see docs/baton-touch-scheme.md and docs/piece-interaction-design.md.
+
+/** Minimum change (degrees) in a Piece's orientation before the commanded
+ *  squadron's heading is re-applied. Doubles as the rotate dead-band (sub-this
+ *  jitter on a resting Piece is ignored) and the latch threshold (we only write
+ *  a new heading when the Piece has genuinely turned, so a held heading is never
+ *  re-clamped to the Piece every frame). The Board reports ~1° precision, so 5°
+ *  is comfortably above noise and matches the forgiving rotate tolerance the
+ *  Piece-interaction guide recommends. */
+export const BatonSteerToleranceDeg = 5;
+
+/** World-unit radius around a baton roundel that counts as "on the roundel" for
+ *  the browser mouse path (press here to steer-drag; tap here to dismiss). A
+ *  little larger than the drawn roundel (2.4 × ShipScale) for an easy target. */
+export const BatonRoundelHitRadius = 3.4 * ShipScale;
+
+/** How far (world units) the floating finger-trim control cluster sits from the
+ *  resting baton (anchored as a ring around it, then clamped on-screen). */
+export const BatonControlClusterRadius = 7.5 * ShipScale;
+
+/** Half the gap (world units) between the two trim buttons in the cluster. */
+export const BatonControlButtonGap = 3.8 * ShipScale;
+
+/** World-unit radius of each floating trim button (sail / ammo) + its hit-test. */
+export const BatonControlButtonRadius = 2.6 * ShipScale;
+
+/** Screen-px a mouse press on a baton roundel must travel before it is treated
+ *  as a steer-drag rather than a (dismiss) tap. Only used on the roundel, so it
+ *  no longer governs place-vs-course the way the old global threshold did. */
+export const BatonMouseDragThresholdPx = 6;
+
+// ---- Pre-game setup / command-piece placement ----
+// Before the battle starts the game sits in a SETUP phase: each human side must
+// place its command piece (a mouse click in the browser, a Glyph contact on
+// Board hardware) on a designated glowing PAD near that fleet's start corner.
+// The placed position seeds that side's Baton of Command, assigns the fleet to
+// human control, and marks the player ready. The battle begins once every
+// required (human) side is ready — AI sides are auto-ready via their persona.
+
+/** Radius (world units) of a setup placement pad / its accepting hit-test. */
+export const SetupPadRadius = 6.5 * ShipScale;
+
+/** Centre of the British command pad (bottom-left, inboard of that fleet's
+ *  start column so it sits in open water with room below for its label). */
+export const SetupPadBritish: { x: number; z: number } = {
+  x: -ArenaHalfX * 0.66,
+  z: -ArenaHalfZ * 0.58,
+};
+
+/** Centre of the Franco-Spanish command pad (bottom-right, mirrored). */
+export const SetupPadFrancoSpanish: { x: number; z: number } = {
+  x: ArenaHalfX * 0.66,
+  z: -ArenaHalfZ * 0.58,
+};
+
+/** Seconds the "all hands ready" countdown runs before the battle begins. */
+export const SetupCountdownSeconds = 1.6;
 
 // ---- Soft collision separation ----
 // A long, thin hull can't be represented by a single centre circle: a circle big
