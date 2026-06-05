@@ -119,15 +119,19 @@ function closestSegmentSegment(
 }
 
 /**
- * A live RELATIVE rotate-to-steer session: the Piece orientation captured when
- * steering began and each commanded ship's ordered heading at that instant
- * (keyed by ship id). Headings are then driven as baseline + Δ where Δ is how
- * far the Piece has rotated since `pieceDeg`. `lastDelta` dead-bands tiny jitter.
+ * A live rotate-to-steer session. We track the baton's CUMULATIVE (un-wrapped)
+ * net rotation since the baseline by summing small per-frame signed increments
+ * (`prevDeg` is last frame's angle, `cumDelta` the running total). Headings are
+ * driven RELATIVELY as baseline + cumDelta (formation-preserving), so placement
+ * (cumDelta 0) changes nothing. When |cumDelta| reaches a full turn (≥ 360°) we
+ * snap ALL commanded ships to the baton's absolute heading (converge a scattered
+ * fleet) and re-baseline. `lastAppliedDelta` dead-bands tiny jitter on the apply.
  */
 interface SteerRef {
-  pieceDeg: number;
+  prevDeg: number;
+  cumDelta: number;
   baseHeadings: Map<number, number>;
-  lastDelta: number;
+  lastAppliedDelta: number;
 }
 
 export class Game {
@@ -507,21 +511,52 @@ export class Game {
       // Begin a steer session: baseline = current Piece angle + each ship's order.
       const baseHeadings = new Map<number, number>();
       for (const cmd of this.aliveCommanded(faction)) baseHeadings.set(cmd.id, cmd.targetHeadingDeg);
-      this.batonSteerRef.set(faction, { pieceDeg: orientationDeg, baseHeadings, lastDelta: 0 });
-      return; // Δ = 0 on the first frame → no change (hold current course)
+      this.batonSteerRef.set(faction, {
+        prevDeg: orientationDeg,
+        cumDelta: 0,
+        baseHeadings,
+        lastAppliedDelta: 0,
+      });
+      return; // first frame → no change (hold current course)
     }
-    const delta = signedDelta(ref.pieceDeg, orientationDeg); // signed rotation since baseline
-    if (Math.abs(delta - ref.lastDelta) < Config.BatonSteerToleranceDeg) return; // dead-band jitter
-    ref.lastDelta = delta;
+
+    // Accumulate the net (un-wrapped) rotation by summing small per-frame signed
+    // increments — so a full one-direction spin reaches ±360 while back-and-forth
+    // jitter/wiggle cancels and never false-triggers the align.
+    ref.cumDelta += signedDelta(ref.prevDeg, orientationDeg);
+    ref.prevDeg = orientationDeg;
+
+    // Full rotation (≥ 360° net): converge the whole squadron onto the baton's
+    // CURRENT absolute heading, then re-baseline so further rotation steers
+    // relatively from the now-unified course (and another full spin re-aligns).
+    if (Math.abs(ref.cumDelta) >= 360) {
+      const absHeading = normalize360(orientationDeg); // baton's absolute facing
+      const alive = this.aliveCommanded(faction);
+      for (const cmd of alive) cmd.setTargetHeading(absHeading);
+      const baseHeadings = new Map<number, number>();
+      for (const cmd of alive) baseHeadings.set(cmd.id, absHeading);
+      ref.baseHeadings = baseHeadings;
+      ref.cumDelta = 0;
+      ref.lastAppliedDelta = 0;
+      // Quick feedback that the fleet aligned.
+      const bpos = this.batonPos.get(faction);
+      if (bpos) this.renderer.spawnText(bpos, "ALIGN", 0xfff1c2);
+      return;
+    }
+
+    // Partial rotation → RELATIVE: every ship turns by the same cumDelta from its
+    // own baseline (formation preserved). Dead-band tiny jitter on the apply.
+    if (Math.abs(ref.cumDelta - ref.lastAppliedDelta) < Config.BatonSteerToleranceDeg) return;
+    ref.lastAppliedDelta = ref.cumDelta;
     for (const cmd of this.aliveCommanded(faction)) {
       let base = ref.baseHeadings.get(cmd.id);
       if (base === undefined) {
         // A ship that wasn't in the baseline (shouldn't happen mid-session) —
         // baseline it now so it doesn't jump.
-        base = cmd.targetHeadingDeg - delta;
+        base = cmd.targetHeadingDeg - ref.cumDelta;
         ref.baseHeadings.set(cmd.id, base);
       }
-      cmd.setTargetHeading(base + delta);
+      cmd.setTargetHeading(base + ref.cumDelta);
     }
   }
 
