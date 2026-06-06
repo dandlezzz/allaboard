@@ -208,7 +208,7 @@ body.phase-setup #dev-controls {
   display: flex;
   gap: 14px;
   align-items: stretch;
-  justify-content: center;
+  justify-content: safe center;
   flex-wrap: nowrap;
   max-width: min(1180px, 96vw);
   padding: 4px 6px 8px;
