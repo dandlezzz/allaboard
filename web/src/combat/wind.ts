@@ -55,16 +55,38 @@ export class Wind {
 }
 
 // Point-of-sail status colours — shared by the on-ship point-of-sail dot AND the
-// course-preview line so the two always read the same: red = in irons (no-go),
-// amber = close-hauled, green = reaching / running (fast points of sail).
-export const POINT_OF_SAIL_COLORS = [0xff4d4d, 0xffb020, 0x4dd06a] as const;
+// course-vector lines so the two always read the same. A SIX-step slow→fast ramp,
+// one colour per point of sail (see `pointOfSailColorIndex` / `pointOfSailFactor`):
+//   0 In Irons      → red       (no-go, slowest)
+//   1 Close-Hauled  → orange
+//   2 Close Reach   → amber/yellow
+//   3 Beam Reach    → yellow-green
+//   4 Broad Reach   → green      (fastest)
+//   5 Running       → teal/cyan  (fast, slightly off the broad-reach peak)
+export const POINT_OF_SAIL_COLORS = [
+  0xff4d4d, 0xff8c33, 0xffd24a, 0x9ed94d, 0x4dd06a, 0x33c4c4,
+] as const;
 
-/** Maps a point-of-sail label to a colour-ramp index (0 = red In Irons, 1 =
- *  amber Close-Hauled, 2 = green reach/run or unknown). */
+/** Maps a point-of-sail label to its colour-ramp index (0..5). Every label
+ *  `pointOfSailFactor` can return is covered; unknown labels fall back to a
+ *  mid/fast green so there's never an out-of-range lookup. */
 export function pointOfSailColorIndex(label: string): number {
-  if (label === "In Irons") return 0;
-  if (label === "Close-Hauled") return 1;
-  return 2;
+  switch (label) {
+    case "In Irons":
+      return 0;
+    case "Close-Hauled":
+      return 1;
+    case "Close Reach":
+      return 2;
+    case "Beam Reach":
+      return 3;
+    case "Broad Reach":
+      return 4;
+    case "Running":
+      return 5;
+    default:
+      return 4;
+  }
 }
 
 /** The point-of-sail status colour for sailing `headingDeg` in the given wind —
@@ -74,35 +96,60 @@ export function pointOfSailColor(headingDeg: number, wind: Wind): number {
   return POINT_OF_SAIL_COLORS[pointOfSailColorIndex(pointOfSailFactor(off).pointOfSail)];
 }
 
-/** Computes the speed multiplier and classifies the point of sail. */
+/**
+ * Computes the speed multiplier and classifies the point of sail across SIX
+ * classic bands (angle off the true wind, 0° = dead into wind → 180° = dead
+ * downwind). Speeds rise from the no-go zone to a broad-reach peak, then ease
+ * back a touch dead downwind (square-rig blanketing). Factors interpolate
+ * smoothly and are continuous at every band boundary:
+ *
+ *   In Irons     0°–NoGoAngle(42°)   InIronsFactor → 0.30   (slowest, no-go)
+ *   Close-Hauled 42°–60°             0.30 → 0.50
+ *   Close Reach  60°–80°             0.50 → 0.70
+ *   Beam Reach   80°–100°            0.70 → 0.90
+ *   Broad Reach  100°–150°           0.90 → 1.00            (fastest)
+ *   Running      150°–180°           1.00 → 0.85
+ */
 export function pointOfSailFactor(offWindAngle: number): PointOfSailResult {
   offWindAngle = Math.abs(offWindAngle);
 
   if (offWindAngle < Config.NoGoAngle) {
-    const t = inverseLerp(0, Config.NoGoAngle, offWindAngle);
-    return { pointOfSail: "In Irons", factor: lerp(Config.InIronsFactor, 0.45, t) };
-  }
-
-  if (offWindAngle < 75) {
     return {
-      pointOfSail: "Close-Hauled",
-      factor: lerp(0.45, 0.85, inverseLerp(Config.NoGoAngle, 75, offWindAngle)),
+      pointOfSail: "In Irons",
+      factor: lerp(Config.InIronsFactor, 0.3, inverseLerp(0, Config.NoGoAngle, offWindAngle)),
     };
   }
 
-  if (offWindAngle < 115) {
+  if (offWindAngle < 60) {
+    return {
+      pointOfSail: "Close-Hauled",
+      factor: lerp(0.3, 0.5, inverseLerp(Config.NoGoAngle, 60, offWindAngle)),
+    };
+  }
+
+  if (offWindAngle < 80) {
+    return {
+      pointOfSail: "Close Reach",
+      factor: lerp(0.5, 0.7, inverseLerp(60, 80, offWindAngle)),
+    };
+  }
+
+  if (offWindAngle < 100) {
     return {
       pointOfSail: "Beam Reach",
-      factor: lerp(0.85, 1.0, inverseLerp(75, 100, offWindAngle)),
+      factor: lerp(0.7, 0.9, inverseLerp(80, 100, offWindAngle)),
     };
   }
 
   if (offWindAngle < 150) {
     return {
       pointOfSail: "Broad Reach",
-      factor: lerp(1.0, 0.9, inverseLerp(115, 150, offWindAngle)),
+      factor: lerp(0.9, 1.0, inverseLerp(100, 150, offWindAngle)),
     };
   }
 
-  return { pointOfSail: "Running", factor: lerp(0.9, 0.78, inverseLerp(150, 180, offWindAngle)) };
+  return {
+    pointOfSail: "Running",
+    factor: lerp(1.0, 0.85, inverseLerp(150, 180, offWindAngle)),
+  };
 }
