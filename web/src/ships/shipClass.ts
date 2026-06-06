@@ -54,8 +54,8 @@ export function shipStats(shipClass: ShipClass): ShipStats {
         acceleration: 2.2 * speedScale,
         gunRange: 30 * rangeScale,
         reloadTime: 6,
-        length: 5.0 * hullScale,
-        beam: 1.3 * beamScale,
+        length: 6.25 * hullScale,
+        beam: 1.6 * beamScale,
       };
     case ShipClass.ThirdRate:
       return {
