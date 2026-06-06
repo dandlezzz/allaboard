@@ -50,6 +50,7 @@ export class CombatSystem {
     // ×4 if we're firing into the target's stern arc (geometry per shot is the
     // same, so resolve the rake once for the whole volley).
     const rake = sternRakeMultiplier(shooter, target);
+    const raked = rake > 1;
 
     shooter.notifyFired(side);
 
@@ -71,7 +72,7 @@ export class CombatSystem {
         add(shooter.position, scale(normal, beamOffset)),
         scale(forward, lerp(zBack, zFront, t)),
       );
-      effects.spawnProjectile(origin, impactPoint(target, hit), profile.tracerColor);
+      effects.spawnProjectile(origin, impactPoint(target, hit, raked), profile.tracerColor);
     }
 
     // A stern-raking broadside that lands at least one ball gets a "RAKE" popup
@@ -121,7 +122,7 @@ export class CombatSystem {
         add(shooter.position, scale(normal, reach)),
         scale(right, lateral),
       );
-      effects.spawnProjectile(origin, impactPoint(target, hit), profile.tracerColor);
+      effects.spawnProjectile(origin, impactPoint(target, hit, rake > 1), profile.tracerColor);
     }
   }
 }
@@ -161,12 +162,34 @@ function hitChanceAt(closeness: number): number {
 /**
  * Where a ball's tracer ends. A hit lands tight on the hull; a miss lands in a
  * wider scatter around the ship so it reads as a near-miss splash (no damage).
+ *
+ * For a RAKED volley the balls land strung out ALONG the target's fore-aft (keel)
+ * axis with only a little lateral scatter, so the volley visibly travels down the
+ * length of the deck — reinforcing what a rake is — instead of clustering around
+ * the centre.
  */
-function impactPoint(target: Ship, hit: boolean): Vec2 {
+function impactPoint(target: Ship, hit: boolean, raked: boolean): Vec2 {
+  if (raked) return rakeImpactPoint(target, hit);
   const radius = hit
     ? target.stats.beam * Config.HitScatterFactor
     : target.stats.length * Config.MissScatterFactor;
   return scatterAround(target.position, radius);
+}
+
+/**
+ * Impact point for a raked ball: spread along the target's keel (fore→aft) over
+ * the hull length, with a small beam-wise jitter, so raking tracers sweep the
+ * deck end to end. A hit stays within the beam; a miss can splash just outside.
+ */
+function rakeImpactPoint(target: Ship, hit: boolean): Vec2 {
+  const fwd = target.forward; // unit bow direction
+  const along = rangeFloat(-0.5, 0.5) * target.stats.length; // anywhere down the hull
+  const lateralRadius = target.stats.beam * (hit ? Config.HitScatterFactor : 0.9);
+  const lateral = rangeFloat(-lateralRadius, lateralRadius);
+  return {
+    x: target.position.x + fwd.x * along - fwd.z * lateral,
+    z: target.position.z + fwd.z * along + fwd.x * lateral,
+  };
 }
 
 function scatterAround(center: Vec2, radius: number): Vec2 {
@@ -212,15 +235,20 @@ function findBestTarget(
 }
 
 /**
- * Stern-rake multiplier: SternRakeMultiplier when `shooter` lies in `target`'s
- * REAR arc (firing into its stern), else 1.
+ * Stern-rake multiplier: SternRakeMultiplier when the line of fire runs down the
+ * length of the target's hull (a true rake into its stern), else 1.
  *
- * Geometry: `target.forward` is the target's bow (unit) direction, so
- * `astern = -forward` points dead astern. `toShooter = shooter - target` points
- * from the target toward whoever is firing. The shot rakes the stern when the
- * shooter sits roughly behind the target — i.e. `toShooter` is within
- * `SternRakeArcHalfAngle` of `astern`. A normal broadside (shooter abeam) is ~90°
- * off astern and so is never boosted.
+ * A rake is decided by the TARGET's orientation relative to the shooter→target
+ * line, NOT by the shooter's heading: the target must be presenting its stern so
+ * the balls sweep the full fore-aft length of the deck. `target.forward` is the
+ * target's bow (unit) direction, so `astern = -forward` points dead astern.
+ * `toShooter = shooter - target` points from the target back toward whoever is
+ * firing; when it is within the tight `SternRakeArcHalfAngle` of `astern`, the
+ * shooter is dead behind the target and the line of fire runs along the keel —
+ * the classic stern rake. A normal broadside (shooter abeam) puts `toShooter`
+ * ~90° off astern, far outside the cone, so it is never boosted. (Bow-on shots —
+ * `toShooter` aligned with `forward` — are intentionally NOT raked; only the
+ * stern counts.)
  */
 function sternRakeMultiplier(shooter: Ship, target: Ship): number {
   const toShooter = sub(shooter.position, target.position);

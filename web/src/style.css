@@ -199,44 +199,42 @@ body.phase-setup #dev-controls {
   margin-top: 12px;
 }
 
-/* Illustrated "How to play" comic — a centred row of four cards (image + title +
- * caption). The row is `pointer-events: auto` so it can be scrolled/swiped on a
- * touch console; it sits in the middle band of the full-screen start screen,
- * clear of the command pads at the bottom corners. */
+/* Illustrated "How to play" guide — six cards (inline-SVG art + title +
+ * caption) laid out as a 3×2 grid so every card is visible at once with NO
+ * scrolling (the Board console is large enough to show them all). The grid is
+ * `pointer-events: auto` so the cards stay interactive; it sits in the middle
+ * band of the full-screen start screen, clear of the command pads at the bottom
+ * corners. The card art is drawn inline (SVG) to faithfully mirror the real
+ * in-game controls and palette, so it scales crisply and needs no image assets. */
 #howto {
   pointer-events: auto;
-  display: flex;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(8px, 1.4vh, 16px);
   align-items: stretch;
-  justify-content: safe center;
-  flex-wrap: nowrap;
-  max-width: min(1180px, 96vw);
-  padding: 4px 6px 8px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
+  justify-items: stretch;
+  width: 100%;
+  max-width: min(1120px, 94vw);
+  padding: 2px 6px;
 }
 
 .howto-card {
-  flex: 0 0 auto;
-  width: clamp(190px, 22vw, 260px);
   margin: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px;
-  scroll-snap-align: center;
+  padding: clamp(7px, 1vh, 11px);
   border-radius: 12px;
   background: rgba(12, 28, 42, 0.66);
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
 }
 
-.howto-card img {
+.howto-art {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 680 / 453;
+  aspect-ratio: 16 / 9;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.25);
 }
@@ -379,6 +377,13 @@ body.phase-setup #dev-controls {
   #setup-overlay {
     padding: 4vh 16px 16px;
     gap: 10px;
+  }
+
+  /* Narrow browser windows: drop the how-to grid to two columns so the cards
+   * stay legible (still no scrolling — the grid just grows taller). */
+  #howto {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 96vw;
   }
 
   .opponent-btn {

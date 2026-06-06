@@ -84,17 +84,29 @@ export const ChaseDamageFactor = 0.35;
 export const DamageSpread = 0.2;
 
 // ---- Stern rake ----
-// A shot fired into a target's stern (from roughly behind it) rakes the full
-// length of the gun deck and is devastating. We model this with a rear-arc cone
-// measured from the target's astern direction (-forward): any shooter inside the
-// cone deals SternRakeMultiplier× damage.
+// A true rake is a broadside fired INTO a target's stern such that the line of
+// fire runs down the full fore-aft length of the hull — the balls sweep the
+// length of the gun deck. The decisive geometry is the TARGET's orientation
+// relative to the shooter→target line: the target must be presenting its stern,
+// i.e. its keel axis is nearly aligned with the line of fire. We model this with
+// a TIGHT cone measured from the target's astern direction (-forward): a shooter
+// inside that cone is dead behind the target, so the shot rakes and deals
+// SternRakeMultiplier× damage. A ship hit abeam (broadside-to-broadside) is NOT
+// raked.
 
-/** Half-angle (degrees) of a target's REAR arc, measured from dead astern. A
- *  shooter within this cone behind the target lands a stern rake. */
-export const SternRakeArcHalfAngle = 50;
+/** Half-angle (degrees) of a target's stern cone, measured from dead astern. The
+ *  shooter must sit within this cone of the target's keel line for the line of
+ *  fire to run the length of the hull (a true rake). Deliberately tight: hulls
+ *  are ~4:1 length:beam, so the stern-to-opposite-bow diagonal is only
+ *  atan(beam/length) ≈ 14° off the keel; 20° keeps the rake to shots that
+ *  genuinely sweep the deck while allowing a little slop for the target yawing.
+ *  (Was 50° — a 100°-wide rear cone that raked almost any shot from behind.) */
+export const SternRakeArcHalfAngle = 20;
 
-/** Damage multiplier applied to a shot landing in the target's rear/stern arc. */
-export const SternRakeMultiplier = 4;
+/** Damage multiplier applied to a shot landing in the target's rear/stern arc.
+ *  Bumped 4 → 7 now that the rake cone is tight (20°): true rakes are rare and
+ *  hard-earned, so a clean stern rake should be devastating. */
+export const SternRakeMultiplier = 7;
 
 // ---- Friendly line-of-fire occlusion ----
 

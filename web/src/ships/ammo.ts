@@ -2,9 +2,11 @@
 // trimmed to two shot types for the web build.
 
 export enum AmmoType {
-  /** Solid round shot: smashes the hull, sinking the enemy. */
+  /** Solid round shot: primarily smashes the hull to sink the enemy, with some
+   *  secondary rigging damage. */
   RoundShot = 0,
-  /** Bar / chain shot: shreds rigging and sails. */
+  /** Bar / chain shot: primarily shreds rigging and sails, with some secondary
+   *  hull damage. */
   BarShot = 1,
 }
 
@@ -20,18 +22,32 @@ export interface AmmoProfile {
   accuracyBonus: number;
 }
 
+// Each shot type is a BLEND, not all-or-nothing: it does full damage to its
+// specialty and a clearly-secondary amount to the other. The specialist values
+// below are the "100%" for that resource — round shot owns the hull, bar shot
+// owns the rigging — and the off-specialty hit is SECONDARY_FRACTION of the
+// OTHER type's specialist value, so cross-damage is measured on the right scale
+// (hull damage vs rigging damage are not the same magnitude). Keeping the
+// specialist values unchanged preserves the existing balance; only the small
+// secondary chip is new.
+const ROUND_HULL = 7.5; // round shot's full hull-smashing power
+const BAR_RIGGING = 20.0; // bar shot's full rigging-shredding power
+const SECONDARY_FRACTION = 0.2; // ~20%: meaningful, but clearly secondary
+
 const PROFILES: Record<AmmoType, AmmoProfile> = {
   [AmmoType.RoundShot]: {
-    hullDamage: 7.5,
-    riggingDamage: 1.0,
+    // Primarily the hull; also chips sails/rigging at ~20% of bar shot's rate.
+    hullDamage: ROUND_HULL,
+    riggingDamage: BAR_RIGGING * SECONDARY_FRACTION,
     tracerColor: 0x262626,
     label: "Round Shot",
     reloadFactor: 1.0,
     accuracyBonus: 0,
   },
   [AmmoType.BarShot]: {
-    hullDamage: 1.0,
-    riggingDamage: 20.0,
+    // Primarily the rigging; also splinters the hull at ~20% of round shot's rate.
+    hullDamage: ROUND_HULL * SECONDARY_FRACTION,
+    riggingDamage: BAR_RIGGING,
     tracerColor: 0x8c8073,
     label: "Bar Shot",
     reloadFactor: 0.6,

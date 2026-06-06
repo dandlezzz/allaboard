@@ -317,7 +317,14 @@ export class FleetAI {
   }
 }
 
-/** True if `point` lies within `ship`'s rear (stern) arc — i.e. behind it. */
+/**
+ * True if `point` lies within `ship`'s tight stern cone — i.e. dead behind it,
+ * along the keel line. Shares `SternRakeArcHalfAngle` with the combat system so
+ * the Tactician's notion of "rakeable / being raked" stays exactly in sync with
+ * where a rake actually lands: the AI only treats a foe as rakeable (or itself as
+ * threatened) when the geometry is a genuine down-the-hull stern rake, not a
+ * mere shot from somewhere behind.
+ */
 function isAstern(ship: Ship, point: Vec2): boolean {
   const toPoint = sub(point, ship.position);
   const astern = scale(ship.forward, -1);

@@ -38,11 +38,52 @@
         <div class="section-label">How to play</div>
         <div id="howto" role="list" aria-label="How to play">
           <figure class="howto-card" role="listitem">
-            <img
-              src="/assets/howto/howto_points_of_sail.png"
-              alt="A ship and the wind, ringed by a red-to-green speed gauge"
-              loading="lazy"
-            />
+            <!-- Points of Sail: the in-game point-of-sail speed gauge (the same
+                 six-step red→green→teal ramp used by the on-ship dot and course
+                 lines), with the wind blowing from the top. -->
+            <svg
+              class="howto-art"
+              viewBox="0 0 320 180"
+              role="img"
+              aria-label="A ship ringed by a red-to-green point-of-sail speed gauge, with the wind blowing from the top"
+            >
+              <rect width="320" height="180" rx="8" fill="#0b1a28" />
+              <g transform="translate(160,20)">
+                <rect x="-3.5" y="-10" width="7" height="20" rx="2" fill="#99d8ff" />
+                <polygon points="0,22 9,8 -9,8" fill="#99d8ff" />
+              </g>
+              <text
+                x="160"
+                y="15"
+                text-anchor="middle"
+                fill="#99d8ff"
+                font-size="9"
+                font-weight="700"
+                font-family="Inter, sans-serif"
+              >
+                WIND
+              </text>
+              <g transform="translate(160,100)">
+                <g id="pos-bands">
+                  <path d="M0,-60 A60 60 0 0 1 40.1,-44.6 L25.4,-28.2 A38 38 0 0 0 0,-38 Z" fill="#ff4d4d" />
+                  <path d="M40.1,-44.6 A60 60 0 0 1 52.0,-30.0 L32.9,-19.0 A38 38 0 0 0 25.4,-28.2 Z" fill="#ff8c33" />
+                  <path d="M52.0,-30.0 A60 60 0 0 1 59.1,-10.4 L37.4,-6.6 A38 38 0 0 0 32.9,-19.0 Z" fill="#ffd24a" />
+                  <path d="M59.1,-10.4 A60 60 0 0 1 59.1,10.4 L37.4,6.6 A38 38 0 0 0 37.4,-6.6 Z" fill="#9ed94d" />
+                  <path d="M59.1,10.4 A60 60 0 0 1 30.0,52.0 L19.0,32.9 A38 38 0 0 0 37.4,6.6 Z" fill="#4dd06a" />
+                  <path d="M30.0,52.0 A60 60 0 0 1 0,60 L0,38 A38 38 0 0 0 19.0,32.9 Z" fill="#33c4c4" />
+                </g>
+                <use href="#pos-bands" transform="scale(-1,1)" />
+                <g transform="rotate(90)">
+                  <path
+                    d="M0,-15 Q6,-3 5,8 Q3,11 0,11 Q-3,11 -5,8 Q-6,-3 0,-15 Z"
+                    fill="#573821"
+                    stroke="#dbb351"
+                    stroke-width="1"
+                  />
+                  <polygon points="0,-11 7,4 -7,4" fill="#efe7d4" opacity="0.92" />
+                </g>
+              </g>
+            </svg>
             <figcaption>
               <span class="howto-title">Points of Sail</span>
               <span class="howto-caption"
@@ -52,11 +93,58 @@
             </figcaption>
           </figure>
           <figure class="howto-card" role="listitem">
-            <img
-              src="/assets/howto/howto_reefing.png"
-              alt="Three masts showing full sail, reefed, and furled with speed arrows"
-              loading="lazy"
-            />
+            <!-- Reefing: the actual sail-trim mast control from the command
+                 panel (drawSailMast) — sail hoisted up the mast with reef bands,
+                 furling down to a bundle on the boom at Heave-To. -->
+            <svg
+              class="howto-art"
+              viewBox="0 0 320 180"
+              role="img"
+              aria-label="Four sail masts showing Full Sail, Reefed, Close-Reefed, and Heave-To"
+            >
+              <rect width="320" height="180" rx="8" fill="#0b1a28" />
+              <!-- Full Sail -->
+              <g>
+                <rect x="22" y="22" width="52" height="126" rx="8" fill="#12283b" fill-opacity="0.55" stroke="#ffe08a" stroke-opacity="0.6" />
+                <rect x="45.5" y="30" width="5" height="110" fill="#6b4e2e" />
+                <rect x="29" y="134" width="38" height="5" fill="#6b4e2e" />
+                <path d="M36.84,136 Q30.9,82 32.7,28 L63.3,28 Q65.1,82 59.16,136 Z" fill="#efe7d4" />
+                <line x1="36.12" y1="109" x2="59.88" y2="109" stroke="#bcae8e" stroke-width="1.2" />
+                <line x1="36.12" y1="82" x2="59.88" y2="82" stroke="#bcae8e" stroke-width="1.2" />
+                <line x1="36.12" y1="55" x2="59.88" y2="55" stroke="#bcae8e" stroke-width="1.2" />
+                <rect x="30.9" y="26" width="34.2" height="4" fill="#6b4e2e" />
+                <text x="48" y="166" text-anchor="middle" fill="rgba(255,255,255,0.72)" font-size="8.5" font-weight="700" font-family="Inter, sans-serif">Full Sail</text>
+              </g>
+              <!-- Reefed -->
+              <g>
+                <rect x="98" y="22" width="52" height="126" rx="8" fill="#12283b" fill-opacity="0.55" stroke="#ffe08a" stroke-opacity="0.6" />
+                <rect x="121.5" y="30" width="5" height="110" fill="#6b4e2e" />
+                <rect x="105" y="134" width="38" height="5" fill="#6b4e2e" />
+                <path d="M112.84,136 Q106.9,96.4 108.7,56.8 L139.3,56.8 Q141.1,96.4 135.16,136 Z" fill="#efe7d4" />
+                <line x1="112.12" y1="109.6" x2="135.88" y2="109.6" stroke="#bcae8e" stroke-width="1.2" />
+                <line x1="112.12" y1="83.2" x2="135.88" y2="83.2" stroke="#bcae8e" stroke-width="1.2" />
+                <rect x="106.9" y="54.8" width="34.2" height="4" fill="#6b4e2e" />
+                <text x="124" y="166" text-anchor="middle" fill="rgba(255,255,255,0.72)" font-size="8.5" font-weight="700" font-family="Inter, sans-serif">Reefed</text>
+              </g>
+              <!-- Close-Reefed -->
+              <g>
+                <rect x="174" y="22" width="52" height="126" rx="8" fill="#12283b" fill-opacity="0.55" stroke="#ffe08a" stroke-opacity="0.6" />
+                <rect x="197.5" y="30" width="5" height="110" fill="#6b4e2e" />
+                <rect x="181" y="134" width="38" height="5" fill="#6b4e2e" />
+                <path d="M188.84,136 Q182.9,110.8 184.7,85.6 L215.3,85.6 Q217.1,110.8 211.16,136 Z" fill="#efe7d4" />
+                <line x1="188.12" y1="110.8" x2="211.88" y2="110.8" stroke="#bcae8e" stroke-width="1.2" />
+                <rect x="182.9" y="83.6" width="34.2" height="4" fill="#6b4e2e" />
+                <text x="200" y="166" text-anchor="middle" fill="rgba(255,255,255,0.72)" font-size="8.5" font-weight="700" font-family="Inter, sans-serif">Close-Reefed</text>
+              </g>
+              <!-- Heave-To -->
+              <g>
+                <rect x="250" y="22" width="52" height="126" rx="8" fill="#12283b" fill-opacity="0.55" stroke="#ffe08a" stroke-opacity="0.6" />
+                <rect x="273.5" y="30" width="5" height="110" fill="#6b4e2e" />
+                <rect x="257" y="134" width="38" height="5" fill="#6b4e2e" />
+                <rect x="260.7" y="123.4" width="30.6" height="12.6" rx="6" fill="#cfc4ab" />
+                <text x="276" y="166" text-anchor="middle" fill="rgba(255,255,255,0.72)" font-size="8.5" font-weight="700" font-family="Inter, sans-serif">Heave-To</text>
+              </g>
+            </svg>
             <figcaption>
               <span class="howto-title">Reefing</span>
               <span class="howto-caption"
@@ -66,11 +154,50 @@
             </figcaption>
           </figure>
           <figure class="howto-card" role="listitem">
-            <img
-              src="/assets/howto/howto_broadside.png"
-              alt="Two ships abeam, one firing a full broadside"
-              loading="lazy"
-            />
+            <!-- Broadsides: two ships abeam (parallel), the upper one firing its
+                 side battery — muzzle flashes, smoke, round shot, and impacts. -->
+            <svg
+              class="howto-art"
+              viewBox="0 0 320 180"
+              role="img"
+              aria-label="Two ships abeam, the upper one firing a full broadside down into the lower ship"
+            >
+              <rect width="320" height="180" rx="8" fill="#0b1a28" />
+              <g transform="translate(160,50) scale(0.8)">
+                <path d="M-56,-11 L30,-12 Q58,0 30,12 L-56,11 Q-60,8 -60,0 Q-60,-8 -56,-11 Z" fill="#573821" stroke="#332112" stroke-width="2" />
+                <ellipse cx="-10" cy="0" rx="38" ry="6.5" fill="#b88a52" />
+                <path d="M-54,-9 L30,-10" stroke="#dbb351" stroke-width="2" fill="none" />
+                <polygon points="-30,-5 -10,-26 -4,-5" fill="#efe7d4" opacity="0.92" />
+                <polygon points="6,-5 22,-22 26,-5" fill="#efe7d4" opacity="0.92" />
+              </g>
+              <g transform="translate(160,132) scale(0.8)">
+                <path d="M-56,-11 L30,-12 Q58,0 30,12 L-56,11 Q-60,8 -60,0 Q-60,-8 -56,-11 Z" fill="#5a3a39" stroke="#332112" stroke-width="2" />
+                <ellipse cx="-10" cy="0" rx="38" ry="6.5" fill="#a8775a" />
+                <path d="M-54,-9 L30,-10" stroke="#dbb351" stroke-width="2" fill="none" />
+              </g>
+              <!-- broadside fire: muzzle flashes, descending round shot, smoke, impacts -->
+              <g>
+                <circle cx="128" cy="62" r="8" fill="#c8c8c8" opacity="0.4" />
+                <circle cx="152" cy="62" r="8" fill="#c8c8c8" opacity="0.4" />
+                <circle cx="176" cy="62" r="8" fill="#c8c8c8" opacity="0.4" />
+                <circle cx="196" cy="62" r="8" fill="#c8c8c8" opacity="0.4" />
+                <circle cx="128" cy="62" r="4.5" fill="#ffd24a" />
+                <circle cx="152" cy="62" r="4.5" fill="#ffd24a" />
+                <circle cx="176" cy="62" r="4.5" fill="#ffd24a" />
+                <circle cx="196" cy="62" r="4.5" fill="#ffd24a" />
+                <circle cx="128" cy="62" r="2" fill="#fff1c2" />
+                <circle cx="152" cy="62" r="2" fill="#fff1c2" />
+                <circle cx="176" cy="62" r="2" fill="#fff1c2" />
+                <circle cx="196" cy="62" r="2" fill="#fff1c2" />
+                <rect x="126.2" y="88" width="3.6" height="3.6" fill="#d1d1d9" />
+                <rect x="150.2" y="92" width="3.6" height="3.6" fill="#d1d1d9" />
+                <rect x="174.2" y="89" width="3.6" height="3.6" fill="#d1d1d9" />
+                <rect x="194.2" y="93" width="3.6" height="3.6" fill="#d1d1d9" />
+                <circle cx="130" cy="118" r="4" fill="#ff8c33" opacity="0.9" />
+                <circle cx="154" cy="118" r="4" fill="#ff8c33" opacity="0.9" />
+                <circle cx="178" cy="118" r="4" fill="#ff8c33" opacity="0.9" />
+              </g>
+            </svg>
             <figcaption>
               <span class="howto-title">Broadsides</span>
               <span class="howto-caption"
@@ -80,40 +207,143 @@
             </figcaption>
           </figure>
           <figure class="howto-card" role="listitem">
-            <img
-              src="/assets/howto/howto_ammo.png"
-              alt="Round shot smashing a hull on the left, bar shot shredding rigging on the right"
-              loading="lazy"
-            />
+            <!-- Ammunition: the actual shot toggle disc (dark disc + gold ring)
+                 showing round shot (solid ball) vs bar shot (two balls + bar),
+                 in the game's grey/green ammo colours. -->
+            <svg
+              class="howto-art"
+              viewBox="0 0 320 180"
+              role="img"
+              aria-label="The ammo toggle showing round shot that mainly smashes the hull and bar shot that mainly shreds rigging"
+            >
+              <rect width="320" height="180" rx="8" fill="#0b1a28" />
+              <!-- Round shot disc -->
+              <circle cx="88" cy="74" r="42" fill="#2a2433" />
+              <circle cx="88" cy="74" r="42" fill="none" stroke="#ffe08a" stroke-width="2.5" />
+              <circle cx="88" cy="74" r="18.9" fill="#d1d1d9" />
+              <text x="88" y="134" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="800" font-family="Inter, sans-serif">Round shot</text>
+              <text x="88" y="150" text-anchor="middle" fill="rgba(255,255,255,0.62)" font-size="9.5" font-weight="600" font-family="Inter, sans-serif">mainly the hull</text>
+              <!-- toggle arrows -->
+              <g stroke="#ffe08a" stroke-width="2.5" fill="none" stroke-linecap="round">
+                <path d="M148,66 L172,66" />
+                <polygon points="172,62 180,66 172,70" fill="#ffe08a" stroke="none" />
+                <path d="M172,82 L148,82" />
+                <polygon points="148,78 140,82 148,86" fill="#ffe08a" stroke="none" />
+              </g>
+              <!-- Bar shot disc -->
+              <circle cx="232" cy="74" r="42" fill="#2a2433" />
+              <circle cx="232" cy="74" r="42" fill="none" stroke="#ffe08a" stroke-width="2.5" />
+              <rect x="211" y="69.8" width="42" height="8.4" fill="#52cc75" />
+              <circle cx="211" cy="74" r="10.1" fill="#52cc75" />
+              <circle cx="253" cy="74" r="10.1" fill="#52cc75" />
+              <text x="232" y="134" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="800" font-family="Inter, sans-serif">Bar shot</text>
+              <text x="232" y="150" text-anchor="middle" fill="rgba(255,255,255,0.62)" font-size="9.5" font-weight="600" font-family="Inter, sans-serif">mainly the rigging</text>
+            </svg>
             <figcaption>
               <span class="howto-title">Ammunition</span>
               <span class="howto-caption"
-                >Round shot smashes the hull to sink ships; bar shot shreds sails
-                and rigging to slow them. Switch shot on the ship's ammo
+                >Round shot mainly smashes the hull to sink ships (and chips
+                rigging); bar shot mainly shreds sails and rigging to slow them
+                (and splinters the hull). Switch shot on the ship's ammo
                 control.</span
               >
             </figcaption>
           </figure>
           <figure class="howto-card" role="listitem">
-            <img
-              src="/assets/howto/howto_raking.png"
-              alt="An attacker perpendicular behind the victim's stern, firing down its length"
-              loading="lazy"
-            />
+            <!-- Raking: an attacker crossing behind the victim's stern,
+                 perpendicular, firing down the full length of the hull (the same
+                 "RAKE" popup the game floats on a successful rake). -->
+            <svg
+              class="howto-art"
+              viewBox="0 0 320 180"
+              role="img"
+              aria-label="An attacker perpendicular behind the victim's stern, firing a volley down the full length of its hull"
+            >
+              <rect width="320" height="180" rx="8" fill="#0b1a28" />
+              <!-- victim ship, broadside-on (stern to the left, bow to the right) -->
+              <g transform="translate(185,104) scale(1.05)">
+                <path d="M-58,-12 L34,-13 Q60,0 34,13 L-58,12 Q-62,8 -62,0 Q-62,-8 -58,-12 Z" fill="#5a3a39" stroke="#332112" stroke-width="2" />
+                <ellipse cx="-10" cy="0" rx="40" ry="7" fill="#a8775a" />
+              </g>
+              <!-- attacker, perpendicular, crossing behind the stern -->
+              <g transform="translate(70,104) rotate(90) scale(0.78)">
+                <path d="M-50,-11 L28,-12 Q52,0 28,12 L-50,11 Q-54,8 -54,0 Q-54,-8 -50,-11 Z" fill="#573821" stroke="#332112" stroke-width="2" />
+                <ellipse cx="-8" cy="0" rx="34" ry="6.5" fill="#b88a52" />
+                <path d="M-48,-9 L28,-10" stroke="#dbb351" stroke-width="2" fill="none" />
+              </g>
+              <!-- raking volley down the length of the victim -->
+              <g>
+                <circle cx="92" cy="98" r="7" fill="#c8c8c8" opacity="0.4" />
+                <circle cx="92" cy="104" r="7" fill="#c8c8c8" opacity="0.4" />
+                <circle cx="92" cy="110" r="7" fill="#c8c8c8" opacity="0.4" />
+                <line x1="96" y1="100" x2="244" y2="100" stroke="#ffd24a" stroke-width="1.4" opacity="0.85" />
+                <line x1="96" y1="104" x2="246" y2="104" stroke="#ffd24a" stroke-width="1.4" opacity="0.85" />
+                <line x1="96" y1="108" x2="244" y2="108" stroke="#ffd24a" stroke-width="1.4" opacity="0.85" />
+                <rect x="150" y="100" width="4" height="4" fill="#d1d1d9" />
+                <rect x="196" y="104" width="4" height="4" fill="#d1d1d9" />
+                <circle cx="236" cy="104" r="5" fill="#ff4d4d" opacity="0.9" />
+                <circle cx="208" cy="102" r="3.5" fill="#ff8c33" opacity="0.9" />
+                <circle cx="176" cy="106" r="3" fill="#ff8c33" opacity="0.85" />
+              </g>
+              <text
+                x="210"
+                y="34"
+                text-anchor="middle"
+                fill="#ffd24a"
+                font-size="26"
+                font-weight="bold"
+                font-family="Georgia, 'Times New Roman', serif"
+                stroke="#1a1208"
+                stroke-width="1.2"
+                paint-order="stroke"
+              >
+                RAKE!
+              </text>
+            </svg>
             <figcaption>
               <span class="howto-title">Raking</span>
               <span class="howto-caption"
-                >Cross behind an enemy's stern, perpendicular, and fire down its
-                length for devastating raking damage.</span
+                >Cross behind an enemy's stern so your broadside fires down the
+                full length of their hull for devastating raking damage.</span
               >
             </figcaption>
           </figure>
           <figure class="howto-card" role="listitem">
-            <img
-              src="/assets/howto/howto_baton.png"
-              alt="A command piece with a glowing command bubble over a squadron"
-              loading="lazy"
-            />
+            <!-- Baton of Command: the gold roundel with its compass cross and
+                 translucent sphere-of-influence ring (drawn by showBatons), with
+                 a commanded squadron inside and a course-preview line. -->
+            <svg
+              class="howto-art"
+              viewBox="0 0 320 180"
+              role="img"
+              aria-label="The glowing Baton of Command roundel surrounded by its sphere of influence over a commanded squadron"
+            >
+              <rect width="320" height="180" rx="8" fill="#0b1a28" />
+              <g transform="translate(160,92)">
+                <!-- sphere of influence (accent-tinted ring) -->
+                <circle r="72" fill="#3373d9" fill-opacity="0.1" />
+                <circle r="72" fill="none" stroke="#3373d9" stroke-width="2" stroke-opacity="0.6" />
+                <!-- commanded ships inside the bubble -->
+                <g transform="translate(-44,-26) rotate(35)">
+                  <path d="M0,-13 Q5,-2 4,7 Q2,10 0,10 Q-2,10 -4,7 Q-5,-2 0,-13 Z" fill="#573821" stroke="#3373d9" stroke-width="1" />
+                  <polygon points="0,-9 6,4 -6,4" fill="#efe7d4" opacity="0.9" />
+                </g>
+                <g transform="translate(46,30) rotate(-20)">
+                  <path d="M0,-13 Q5,-2 4,7 Q2,10 0,10 Q-2,10 -4,7 Q-5,-2 0,-13 Z" fill="#573821" stroke="#3373d9" stroke-width="1" />
+                  <polygon points="0,-9 6,4 -6,4" fill="#efe7d4" opacity="0.9" />
+                </g>
+                <!-- course-preview line from the baton -->
+                <line x1="0" y1="0" x2="52" y2="34" stroke="#ffe08a" stroke-width="2" stroke-opacity="0.8" stroke-linecap="round" />
+                <circle cx="52" cy="34" r="4" fill="#ffe08a" fill-opacity="0.6" />
+                <!-- the baton roundel: glow, gold ring, compass cross, core -->
+                <circle r="30" fill="#ffd24a" fill-opacity="0.22" />
+                <circle r="24" fill="none" stroke="#3373d9" stroke-width="2" stroke-opacity="0.75" />
+                <circle r="18" fill="none" stroke="#ffe08a" stroke-width="4" />
+                <line x1="-24" y1="0" x2="24" y2="0" stroke="#ffe08a" stroke-width="2" />
+                <line x1="0" y1="-24" x2="0" y2="24" stroke="#ffe08a" stroke-width="2" />
+                <circle r="8" fill="#fff1c2" />
+              </g>
+            </svg>
             <figcaption>
               <span class="howto-title">Baton of Command</span>
               <span class="howto-caption"
