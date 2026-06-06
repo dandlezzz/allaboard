@@ -18,7 +18,6 @@ import { ShipClass, shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
 import { buildSea } from "../rendering/scene";
-import { audio } from "../audio/audio";
 import type { Hud } from "../ui/hud";
 import type { PointerSample } from "../board/input";
 import type { PauseMenu } from "../board/pauseMenu";
@@ -357,9 +356,6 @@ export class Game {
    */
   private handleSetupContact(s: PointerSample): void {
     if (s.phase === "ended") return; // a lift never places
-    // The Setup placement tap is the first user gesture — unlock audio here so
-    // the AudioContext is running before the first broadside (idempotent).
-    audio.unlock();
     const world = this.renderer.screenToWorld(s.position.x, s.position.y);
     const hitRadius = Config.SetupPadRadius * 1.6; // generous, forgiving target
     for (const faction of PLAYABLE_FACTIONS) {

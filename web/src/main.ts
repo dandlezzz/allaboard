@@ -18,7 +18,6 @@ import { createInputAdapter } from "./board/input";
 import { loadBoard } from "./board/sdk";
 import { PauseMenu } from "./board/pauseMenu";
 import { preloadArt } from "./rendering/assets";
-import { audio } from "./audio/audio";
 
 async function main(): Promise<void> {
   const canvas = getElement<HTMLCanvasElement>("game-canvas");
@@ -34,11 +33,6 @@ async function main(): Promise<void> {
   // Load ship/smoke textures before building the fleets (failures degrade to
   // the procedural ShipView art).
   await preloadArt();
-
-  // Decode the SFX clips up front (context created suspended; decode is allowed
-  // pre-gesture). Guarded internally — a failed clip just stays silent, never
-  // blocks startup. Playback is unlocked on the first Setup tap (see game.ts).
-  await audio.preload();
 
   // HUD callbacks need the Game and the Game needs the HUD, so the closures
   // below capture `game`, which is assigned immediately after construction.
@@ -66,15 +60,6 @@ async function main(): Promise<void> {
     game.onPointerSamples(samples),
   );
   window.addEventListener("beforeunload", disposeInput);
-
-  // Belt-and-suspenders audio unlock: resume the AudioContext on the very first
-  // pointer gesture anywhere (idempotent), so sound works even via odd entry
-  // paths. The primary unlock is the Setup placement tap (game.handleSetupContact).
-  const unlockAudioOnce = (): void => {
-    audio.unlock();
-    window.removeEventListener("pointerdown", unlockAudioOnce);
-  };
-  window.addEventListener("pointerdown", unlockAudioOnce);
 
   // Drive the simulation from Pixi's ticker (dt clamped to avoid huge steps
   // after a tab regains focus).

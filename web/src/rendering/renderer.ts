@@ -9,8 +9,6 @@ import * as Config from "../core/config";
 import { headingToVector } from "../core/nav";
 import { type Vec2, add, scale, sub, magnitude, normalize } from "../core/vec";
 import { smokeTexture } from "./assets";
-import { audio, type SoundName } from "../audio/audio";
-import type { ImpactKind } from "../combat/effects";
 
 /** Clamps `v` into the inclusive range [lo, hi] (hi guarded ≥ lo). */
 function clampRange(v: number, lo: number, hi: number): number {
@@ -23,8 +21,6 @@ interface Tracer {
   target: Vec2;
   color: number;
   life: number;
-  /** Gunnery outcome → which impact sound to play when this tracer lands. */
-  impact?: ImpactKind;
 }
 
 interface Puff {
@@ -163,22 +159,14 @@ export class Renderer {
 
   // ---- Effects -----------------------------------------------------------
 
-  spawnProjectile(origin: Vec2, target: Vec2, color: number, impact?: ImpactKind): void {
+  spawnProjectile(origin: Vec2, target: Vec2, color: number): void {
     const dist = magnitude(sub(target, origin));
     this.tracers.push({
       pos: { x: origin.x, z: origin.z },
       target: { x: target.x, z: target.z },
       color,
       life: Math.max(0.05, dist / Config.ProjectileSpeed),
-      impact,
     });
-  }
-
-  /** Plays a one-shot SFX by name through the Web Audio engine (guarded/no-op
-   *  if audio is unavailable). Combat calls this for the cannon volley; impacts
-   *  are played from updateEffects when each tracer lands. */
-  playSound(name: string): void {
-    audio.play(name as SoundName);
   }
 
   spawnSmoke(origin: Vec2, velocity: Vec2, count: number, size: number): void {
@@ -635,10 +623,6 @@ export class Renderer {
       }
       t.life -= dt;
       if (t.life <= 0 || d < 0.5) {
-        // The ball has reached its target — play the impact sound now so it's in
-        // sync with the visible landing. The audio engine's per-sound throttle
-        // coalesces a volley's many balls into just one or two impacts.
-        if (t.impact) audio.play(t.impact === "hit" ? "impact" : "splash");
         this.tracers.splice(i, 1);
         continue;
       }
