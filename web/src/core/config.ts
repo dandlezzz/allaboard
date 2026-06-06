@@ -39,12 +39,13 @@ export const CameraOrthoSize = ArenaHalfZ / (1 - ArenaSafeInset);
  *  overlap regardless of the class mix). */
 export const ColumnGap = 2 * ShipScale;
 
-/** Extra multiplier on hull size (length/beam) ONLY. Reduced again to 0.75× of
- *  the previous 1.3125 × 0.75 (= 0.5625 × the original 1.3125 ≈ 0.738); selection
- *  radius, sprite scale, the collision capsule and the command bubble all track
- *  `length`, so everything stays coherent while arena/range/speed (ShipScale)
- *  are unchanged. */
-export const HullSizeBoost = 1.3125 * 0.75 * 0.75;
+/** Extra multiplier on hull size (length/beam) ONLY. Base 1.3125 × 0.75 × 0.75
+ *  (≈ 0.738), then × 1.25 to render every ship 25% larger (≈ 0.923). Selection
+ *  radius, sprite scale, the collision capsule, the command bubble and spawn
+ *  spacing all track `length`, so everything scales coherently while
+ *  arena/range/speed (ShipScale) are unchanged; the 8-ship bottom-corner columns
+ *  still fit on-screen and don't overlap at this size. */
+export const HullSizeBoost = 1.3125 * 0.75 * 0.75 * 1.25;
 
 // ---- Wind ----
 
