@@ -18,7 +18,7 @@ import { ShipClass, shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
 import { buildSea } from "../rendering/scene";
-import type { Hud } from "../ui/hud";
+import type { Hud, Opponent } from "../ui/hud";
 import type { PointerSample } from "../board/input";
 import type { PauseMenu } from "../board/pauseMenu";
 
@@ -231,8 +231,7 @@ export class Game {
     this.control.set(Faction.FrancoSpanish, ControlMode.AI);
     this.ai.set(Faction.FrancoSpanish, new FleetAI(Faction.FrancoSpanish, this.aiPersona));
 
-    this.hud.setSecondPlayerMode(false);
-    this.hud.setActivePersona(this.aiPersona);
+    this.hud.setOpponent(this.currentOpponent());
     this.enterSetup();
   }
 
@@ -1110,7 +1109,7 @@ export class Game {
   private refreshSetupVisuals(): void {
     if (this.phase !== GamePhase.Setup) {
       this.renderer.hideSetupPads();
-      this.hud.setSetupOverlay(false, "", "");
+      this.hud.setSetupOverlay(false, "");
       return;
     }
     const pads = PLAYABLE_FACTIONS.map((faction) => {
@@ -1131,28 +1130,34 @@ export class Game {
       };
     });
     this.renderer.showSetupPads(pads);
-    this.hud.setSetupOverlay(true, this.setupTitle(), this.setupStatus());
-  }
-
-  private setupTitle(): string {
-    return this.countingDown ? "All hands on deck" : "Take Command";
+    this.hud.setSetupOverlay(true, this.setupStatus());
   }
 
   private setupStatus(): string {
     if (this.countingDown) {
-      return `All sides ready — battle stations in ${Math.ceil(this.setupCountdown)}…`;
+      return `All hands on deck — battle stations in ${Math.ceil(this.setupCountdown)}…`;
     }
     const waiting = PLAYABLE_FACTIONS.filter((f) => this.needsPlacement(f)).map(displayName);
     if (waiting.length === 0) return "Standing by…";
-    return `Waiting for ${waiting.join(" & ")} to place their command piece…`;
+    if (waiting.length === 1) {
+      return `Place ${waiting[0]}'s command piece to begin`;
+    }
+    return `Waiting for ${waiting.join(" & ")} to place their command pieces`;
   }
 
-  toggleSecondPlayer(): void {
-    const nowHuman = this.control.get(Faction.FrancoSpanish) !== ControlMode.Human;
-    this.control.set(Faction.FrancoSpanish, nowHuman ? ControlMode.Human : ControlMode.AI);
-    this.hud.setSecondPlayerMode(nowHuman);
-    // Changing who's required restarts into Setup so the new line-up always
-    // begins by placing command pieces.
+  /** The opponent currently selected on the start screen. */
+  private currentOpponent(): Opponent {
+    return this.isHuman(Faction.FrancoSpanish) ? "human" : this.aiPersona;
+  }
+
+  /**
+   * Picks the "2 Players" option: the Franco-Spanish fleet becomes human-
+   * controlled and the match restarts into Setup so BOTH captains must place a
+   * command piece before the battle begins.
+   */
+  selectVsHuman(): void {
+    this.control.set(Faction.FrancoSpanish, ControlMode.Human);
+    this.hud.setOpponent("human");
     this.restart();
   }
 
@@ -1165,8 +1170,7 @@ export class Game {
     this.aiPersona = persona;
     this.control.set(Faction.FrancoSpanish, ControlMode.AI);
     this.ai.set(Faction.FrancoSpanish, new FleetAI(Faction.FrancoSpanish, persona));
-    this.hud.setSecondPlayerMode(false);
-    this.hud.setActivePersona(persona);
+    this.hud.setOpponent(persona);
     this.restart();
   }
 

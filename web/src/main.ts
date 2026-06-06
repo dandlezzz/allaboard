@@ -38,9 +38,9 @@ async function main(): Promise<void> {
   // below capture `game`, which is assigned immediately after construction.
   let game: Game;
   const hud = new Hud(
-    () => game.toggleSecondPlayer(),
-    () => game.restart(),
     (persona) => game.selectPersona(persona),
+    () => game.selectVsHuman(),
+    () => game.restart(),
   );
   game = new Game(renderer, hud, onDevice);
 

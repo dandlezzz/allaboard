@@ -1,7 +1,7 @@
 // Heads-up display — a DOM port of Unity `UI/HudController.cs`. Drives the wind
-// indicator (an arrow that rotates as the wind veers), per-side fleet status,
-// a control hint, and the win banner. The dev-controls (P2 toggle / rematch)
-// are wired here too.
+// indicator, per-side fleet status, the control hint, the win banner, AND the
+// "Broadsides" start screen (opponent selector + placement status) shown during
+// the Setup phase. The in-game Rematch button is wired here too.
 
 import { Faction, accentCss, displayName } from "../core/faction";
 import { normalize360 } from "../core/nav";
@@ -9,6 +9,9 @@ import { roundToInt } from "../core/mathf";
 import { AIPersona } from "../ai/fleetAI";
 import type { Ship } from "../ships/ship";
 import type { Wind } from "../combat/wind";
+
+/** The selected opponent on the start screen: an AI persona, or 2-player. */
+export type Opponent = AIPersona | "human";
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -22,57 +25,50 @@ export class Hud {
   private readonly fleetBritish = el("fleet-british");
   private readonly fleetFranco = el("fleet-franco");
   private readonly banner = el("banner");
-  private readonly setupTitle = el("setup-title");
   private readonly setupStatus = el("setup-status");
-  private readonly toggleButton = el<HTMLButtonElement>("toggle-ai-button");
   private readonly resetButton = el<HTMLButtonElement>("reset-button");
 
-  // Persona buttons: each starts a fresh game vs that AI; the active one is
-  // highlighted to show the currently-selected opponent.
-  private readonly personaButtons: ReadonlyArray<{ persona: AIPersona; button: HTMLButtonElement }> = [
-    { persona: AIPersona.Standard, button: el<HTMLButtonElement>("persona-standard") },
-    { persona: AIPersona.Turtle, button: el<HTMLButtonElement>("persona-turtle") },
-    { persona: AIPersona.Tactician, button: el<HTMLButtonElement>("persona-giga") },
+  // Start-screen opponent selector: the three AI personas + a 2-player option.
+  // Picking one starts a fresh match vs that opponent; the active one is lit.
+  private readonly opponentButtons: ReadonlyArray<{ key: Opponent; button: HTMLButtonElement }> = [
+    { key: AIPersona.Standard, button: el<HTMLButtonElement>("persona-standard") },
+    { key: AIPersona.Turtle, button: el<HTMLButtonElement>("persona-turtle") },
+    { key: AIPersona.Tactician, button: el<HTMLButtonElement>("persona-giga") },
+    { key: "human", button: el<HTMLButtonElement>("opponent-human") },
   ];
 
   constructor(
-    onToggleSecondPlayer: () => void,
-    onReset: () => void,
     onSelectPersona: (persona: AIPersona) => void,
+    onSelectVsHuman: () => void,
+    onReset: () => void,
   ) {
     this.fleetBritish.style.color = accentCss(Faction.British);
     this.fleetFranco.style.color = accentCss(Faction.FrancoSpanish);
-    this.toggleButton.addEventListener("click", onToggleSecondPlayer);
     this.resetButton.addEventListener("click", onReset);
-    for (const { persona, button } of this.personaButtons) {
-      button.addEventListener("click", () => onSelectPersona(persona));
+    for (const { key, button } of this.opponentButtons) {
+      button.addEventListener("click", () => {
+        if (key === "human") onSelectVsHuman();
+        else onSelectPersona(key);
+      });
     }
   }
 
-  /** Highlights the button for the currently-selected opponent persona. */
-  setActivePersona(persona: AIPersona): void {
-    for (const entry of this.personaButtons) {
-      entry.button.classList.toggle("active", entry.persona === persona);
+  /** Highlights the currently-selected opponent (an AI persona or "human"). */
+  setOpponent(active: Opponent): void {
+    for (const entry of this.opponentButtons) {
+      entry.button.classList.toggle("active", entry.key === active);
     }
   }
 
   /**
-   * Shows/hides the pre-game Setup overlay (the "Take Command" prompt + the
-   * waiting/ready status). Toggling `body.phase-setup` lets the stylesheet hide
-   * the in-battle hint while players are placing their command pieces.
+   * Shows/hides the start screen (Setup phase) and sets its status line.
+   * Toggling `body.phase-setup` lets the stylesheet reveal the start overlay and
+   * hide in-battle chrome (wind/fleet panels, control hint) while players choose
+   * an opponent and place their command pieces.
    */
-  setSetupOverlay(active: boolean, title: string, status: string): void {
+  setSetupOverlay(active: boolean, status: string): void {
     document.body.classList.toggle("phase-setup", active);
-    if (active) {
-      this.setupTitle.textContent = title;
-      this.setupStatus.textContent = status;
-    }
-  }
-
-  setSecondPlayerMode(secondPlayerIsHuman: boolean): void {
-    this.toggleButton.textContent = secondPlayerIsHuman
-      ? "Franco-Spanish: Human"
-      : "Franco-Spanish: AI";
+    if (active) this.setupStatus.textContent = status;
   }
 
   refresh(wind: Wind, ships: ReadonlyArray<Ship>, gameOver: boolean, winner: Faction): void {

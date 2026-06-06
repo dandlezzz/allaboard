@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-    <title>Trafalgar — Age of Sail</title>
+    <title>Broadsides</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
-    <canvas id="game-canvas" aria-label="Trafalgar battle area"></canvas>
+    <canvas id="game-canvas" aria-label="Broadsides battle area"></canvas>
 
     <div id="hud" aria-live="polite">
       <div id="wind-indicator">
@@ -30,18 +30,34 @@
 
       <div id="banner"></div>
 
+      <!-- Start screen — shown during the Setup phase -->
       <div id="setup-overlay">
-        <div id="setup-title">Take Command</div>
-        <div id="setup-prompt">Place your command piece on your pad to take command of your fleet</div>
-        <div id="setup-status">Waiting for players…</div>
+        <div id="game-title">BROADSIDES</div>
+        <div id="game-subtitle">Age of Sail</div>
+        <div id="opponent-label">Choose your opponent</div>
+        <div id="opponent-select" role="group" aria-label="Choose your opponent">
+          <button id="persona-standard" class="opponent-btn" type="button">
+            <span class="opp-name">Standard</span>
+            <span class="opp-desc">A balanced foe</span>
+          </button>
+          <button id="persona-turtle" class="opponent-btn" type="button">
+            <span class="opp-name">Turtle</span>
+            <span class="opp-desc">Holds station, guns blazing</span>
+          </button>
+          <button id="persona-giga" class="opponent-btn" type="button">
+            <span class="opp-name">Giga-brain</span>
+            <span class="opp-desc">Manoeuvres to rake</span>
+          </button>
+          <button id="opponent-human" class="opponent-btn" type="button">
+            <span class="opp-name">2 Players</span>
+            <span class="opp-desc">Human vs human</span>
+          </button>
+        </div>
+        <div id="setup-status">Place your command piece to begin…</div>
       </div>
     </div>
 
     <div id="dev-controls">
-      <button id="persona-standard" type="button">vs Standard</button>
-      <button id="persona-turtle" type="button">vs Turtle</button>
-      <button id="persona-giga" type="button">vs Giga-brain</button>
-      <button id="toggle-ai-button" type="button">Franco-Spanish: AI</button>
       <button id="reset-button" type="button">Rematch</button>
     </div>
 
