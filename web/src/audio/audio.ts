@@ -40,6 +40,8 @@ class AudioEngine {
   private sfx: GainNode | null = null;
   private readonly buffers = new Map<SoundName, AudioBuffer>();
   private readonly lastPlayed = new Map<SoundName, number>();
+  // Per-sound trigger counter for the "every other event" gate (halves density).
+  private readonly playCount = new Map<SoundName, number>();
   private activeVoices = 0;
   private masterVol = 1.0;
   private sfxVol = 0.9;
@@ -129,6 +131,13 @@ class AudioEngine {
     if (!ctx || !sfx || ctx.state !== "running") return;
     const buffer = this.buffers.get(name);
     if (!buffer) return;
+
+    // Every-OTHER-event gate (per sound): only actually play every 2nd trigger,
+    // so cannon booms / impacts fire ~half as often — cuts SFX density. This is
+    // ON TOP OF the voice cap + throttle + pitch jitter below.
+    const count = (this.playCount.get(name) ?? 0) + 1;
+    this.playCount.set(name, count);
+    if (count % 2 === 1) return; // skip odd invocations (1st, 3rd, 5th, …)
 
     const def = SOUNDS[name];
     const nowMs = ctx.currentTime * 1000;

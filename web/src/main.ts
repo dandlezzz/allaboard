@@ -19,22 +19,6 @@ import { loadBoard } from "./board/sdk";
 import { PauseMenu } from "./board/pauseMenu";
 import { preloadArt } from "./rendering/assets";
 import { audio } from "./audio/audio";
-import { showError } from "./ui/debugOverlay";
-
-// --- Global error boundary (installed as early as possible) -----------------
-// The Board can't stream logs for this app, and an uncaught error / rejection
-// can tank the WebView (it drops to the home screen). Swallow them: surface the
-// message on the on-screen overlay and preventDefault so nothing propagates up.
-if (typeof window !== "undefined") {
-  window.addEventListener("error", (ev) => {
-    showError("error", ev.error ?? ev.message);
-    ev.preventDefault();
-  });
-  window.addEventListener("unhandledrejection", (ev) => {
-    showError("unhandledrejection", ev.reason);
-    ev.preventDefault();
-  });
-}
 
 async function main(): Promise<void> {
   const canvas = getElement<HTMLCanvasElement>("game-canvas");
@@ -78,15 +62,9 @@ async function main(): Promise<void> {
 
   game.start();
 
-  const disposeInput = await createInputAdapter(canvas, (samples) => {
-    // Input handling (audio unlock, baton/steer, controls) must never crash the
-    // app on an odd contact — catch and surface instead.
-    try {
-      game.onPointerSamples(samples);
-    } catch (err) {
-      showError("input", err);
-    }
-  });
+  const disposeInput = await createInputAdapter(canvas, (samples) =>
+    game.onPointerSamples(samples),
+  );
   window.addEventListener("beforeunload", disposeInput);
 
   // Belt-and-suspenders audio unlock: resume the AudioContext on the very first
@@ -99,22 +77,15 @@ async function main(): Promise<void> {
   window.addEventListener("pointerdown", unlockAudioOnce);
 
   // Drive the simulation from Pixi's ticker (dt clamped to avoid huge steps
-  // after a tab regains focus). Wrapped in try/catch so an exception in ONE
-  // frame is caught + surfaced and the loop CONTINUES next frame, instead of a
-  // throwing rAF callback killing the loop (a classic "app freezes/closes").
+  // after a tab regains focus).
   renderer.app.ticker.add((ticker) => {
-    try {
-      const dt = Math.min(0.05, ticker.deltaMS / 1000);
-      game.update(dt);
-    } catch (err) {
-      showError("loop", err);
-    }
+    const dt = Math.min(0.05, ticker.deltaMS / 1000);
+    game.update(dt);
   });
 }
 
 main().catch((err) => {
   console.error("[Trafalgar] failed to start:", err);
-  showError("startup", err);
 });
 
 function getElement<T extends HTMLElement>(id: string): T {
