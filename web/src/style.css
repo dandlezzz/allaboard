@@ -187,13 +187,78 @@ body.phase-setup #dev-controls {
   color: rgba(255, 255, 255, 0.66);
 }
 
-#opponent-label {
-  margin-top: 12px;
+.section-label {
   font-size: clamp(12px, 1.7vh, 16px);
   font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.55);
+}
+
+#opponent-label {
+  margin-top: 12px;
+}
+
+/* Illustrated "How to play" comic — a centred row of four cards (image + title +
+ * caption). The row is `pointer-events: auto` so it can be scrolled/swiped on a
+ * touch console; it sits in the middle band of the full-screen start screen,
+ * clear of the command pads at the bottom corners. */
+#howto {
+  pointer-events: auto;
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  justify-content: center;
+  flex-wrap: nowrap;
+  max-width: min(1180px, 96vw);
+  padding: 4px 6px 8px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.howto-card {
+  flex: 0 0 auto;
+  width: clamp(190px, 22vw, 260px);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  scroll-snap-align: center;
+  border-radius: 12px;
+  background: rgba(12, 28, 42, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.howto-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 680 / 453;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.howto-card figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.howto-title {
+  font-size: clamp(15px, 1.9vh, 18px);
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.howto-caption {
+  font-size: clamp(11px, 1.5vh, 13px);
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.66);
 }
 
 #opponent-select {

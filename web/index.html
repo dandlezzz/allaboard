@@ -34,7 +34,68 @@
       <div id="setup-overlay">
         <div id="game-title">BROADSIDES</div>
         <div id="game-subtitle">Age of Sail</div>
-        <div id="opponent-label">Choose your opponent</div>
+
+        <div class="section-label">How to play</div>
+        <div id="howto" role="list" aria-label="How to play">
+          <figure class="howto-card" role="listitem">
+            <img
+              src="/assets/howto/howto_points_of_sail.png"
+              alt="A ship and the wind, ringed by a red-to-green speed gauge"
+              loading="lazy"
+            />
+            <figcaption>
+              <span class="howto-title">Points of Sail</span>
+              <span class="howto-caption"
+                >You can't sail into the wind. Run across it or downwind (green)
+                for speed; pinch too close (red) and you stall.</span
+              >
+            </figcaption>
+          </figure>
+          <figure class="howto-card" role="listitem">
+            <img
+              src="/assets/howto/howto_broadside.png"
+              alt="Two ships abeam, one firing a full broadside"
+              loading="lazy"
+            />
+            <figcaption>
+              <span class="howto-title">Broadsides</span>
+              <span class="howto-caption"
+                >Your guns fire from the sides. Turn so the enemy is abeam to
+                unleash a full broadside.</span
+              >
+            </figcaption>
+          </figure>
+          <figure class="howto-card" role="listitem">
+            <img
+              src="/assets/howto/howto_raking.png"
+              alt="A ship firing down the length of an enemy's stern"
+              loading="lazy"
+            />
+            <figcaption>
+              <span class="howto-title">Raking</span>
+              <span class="howto-caption"
+                >Cross an enemy's bow or stern and fire down its length for
+                devastating raking damage.</span
+              >
+            </figcaption>
+          </figure>
+          <figure class="howto-card" role="listitem">
+            <img
+              src="/assets/howto/howto_baton.png"
+              alt="A command piece with a glowing command bubble over a squadron"
+              loading="lazy"
+            />
+            <figcaption>
+              <span class="howto-title">Baton of Command</span>
+              <span class="howto-caption"
+                >Place your piece to command nearby ships; hold and rotate it to
+                steer the whole squadron.</span
+              >
+            </figcaption>
+          </figure>
+        </div>
+
+        <div id="opponent-label" class="section-label">Choose your opponent</div>
         <div id="opponent-select" role="group" aria-label="Choose your opponent">
           <button id="persona-standard" class="opponent-btn" type="button">
             <span class="opp-name">Standard</span>
