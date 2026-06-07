@@ -18,6 +18,8 @@ export interface PauseMenuCallbacks {
 }
 
 const RESTART_BUTTON_ID = "restart";
+/** The custom "Restart" button shown in the in-match / game-over overlay. */
+const RESTART_BUTTON = { id: RESTART_BUTTON_ID, title: "Restart", icon: "circulararrow" } as const;
 
 export class PauseMenu {
   private readonly board: BoardLike | null;
@@ -35,33 +37,46 @@ export class PauseMenu {
   }
 
   /**
-   * Registers the in-match pause context (called when entering the Playing
-   * phase) so the hardware menu button opens an overlay offering Restart and the
-   * OS-provided Quit. Save is omitted for now (no save implementation yet).
+   * Setup / start screen: there's no live match to Restart, but we STILL register
+   * a (Restart-less) context so the hardware menu button — and the OS-provided
+   * Quit on it — work on the start screen. Previously the context was CLEARED
+   * outside the Playing phase, which left the menu button dead on the start and
+   * game-over screens (no way to quit the app from there).
    */
-  enterPlaying(): void {
-    if (!this.active) return;
-    try {
-      this.board!.pause!.setContext({
-        offerSaveOption: false,
-        customButtons: [{ id: RESTART_BUTTON_ID, title: "Restart", icon: "circulararrow" }],
-      });
-    } catch {
-      /* off-device / unsupported: ignore */
-    }
-    this.ensureSubscribed();
+  enterSetup(): void {
+    this.applyContext([]);
   }
 
   /**
-   * Clears the pause context (called on game over / when returning to Setup) so
-   * the overlay reflects that there's no live match to act on.
+   * In-match pause context (Playing phase): the hardware menu button opens an
+   * overlay offering Restart and the OS-provided Quit. Save is omitted for now
+   * (no save implementation yet).
    */
-  clear(): void {
+  enterPlaying(): void {
+    this.applyContext([RESTART_BUTTON]);
+  }
+
+  /**
+   * Game-over context: keep the menu live so the player can start a fresh battle
+   * (Restart) or Quit straight from the overlay without tapping the canvas.
+   */
+  enterGameOver(): void {
+    this.applyContext([RESTART_BUTTON]);
+  }
+
+  /**
+   * Sets the pause context for the current phase. `setContext` is a FULL
+   * replacement (unspecified fields revert to defaults), so we always pass the
+   * complete context. Subscription to results is ensured FIRST so a choice made
+   * in any phase (including a Quit from the start screen) is actually handled.
+   */
+  private applyContext(customButtons: ReadonlyArray<typeof RESTART_BUTTON>): void {
     if (!this.active) return;
+    this.ensureSubscribed();
     try {
-      this.board!.pause!.clearContext?.();
+      this.board!.pause!.setContext({ offerSaveOption: false, customButtons });
     } catch {
-      /* ignore */
+      /* off-device / unsupported: ignore */
     }
   }
 

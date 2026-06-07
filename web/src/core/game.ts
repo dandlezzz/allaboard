@@ -336,8 +336,10 @@ export class Game {
     this.sailDragFaction = null;
     this.renderer.hideCoursePreview();
     this.spawnAllFleets();
-    // No live match yet: drop any in-match pause context (Restart/Quit overlay).
-    this.pauseMenu?.clear();
+    // No live match yet, but keep a pause context registered so the hardware
+    // menu button (and its Quit) still works on the start screen — just without
+    // the in-match Restart option.
+    this.pauseMenu?.enterSetup();
   }
 
   /**
@@ -1021,8 +1023,9 @@ export class Game {
 
     this.phase = GamePhase.GameOver;
     this.gameOverTimer = 0;
-    // Match is over: drop the in-match pause context.
-    this.pauseMenu?.clear();
+    // Match is over: keep the menu live so the player can Restart (new battle)
+    // or Quit straight from the overlay.
+    this.pauseMenu?.enterGameOver();
     this.winner = britishAfloat
       ? Faction.British
       : francoAfloat
