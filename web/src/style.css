@@ -596,11 +596,13 @@ body.phase-setup #setup-status {
   transform: translateY(1px);
 }
 
+/* Top-left corner, stacked directly above the Rematch button. */
 #battles-toggle {
   top: 16px;
-  right: 16px;
+  left: 16px;
+  min-width: 96px;
   min-height: 44px;
-  padding: 8px 16px;
+  padding: 8px 14px;
   font-size: 15px;
   letter-spacing: 0.5px;
 }
@@ -614,10 +616,11 @@ body.phase-setup #setup-status {
   font-size: 24px;
 }
 
-/* In-game Rematch button — small, top-left. Hidden during Setup / menu. */
+/* In-game Rematch button — small, top-left, stacked beneath the Battles
+ * button. Hidden during Setup / menu. */
 #dev-controls {
   position: fixed;
-  top: 16px;
+  top: 68px;
   left: 16px;
   z-index: 20;
   display: flex;
