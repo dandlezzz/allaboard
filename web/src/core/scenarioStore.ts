@@ -17,11 +17,12 @@
 
 import * as Config from "./config";
 import { ShipClass } from "../ships/shipClass";
-import { SCENARIOS, type Scenario, type FleetFormation, type LandShape } from "./scenarios";
+import { SCENARIOS, type Scenario, type ShipPlacement, type LandShape } from "./scenarios";
 
-const STORAGE_KEY = "trafalgar.customScenarios.v2";
-/** Superseded keys, purged on first load so stale customs never reappear. */
-const LEGACY_KEYS = ["trafalgar.customScenarios.v1"];
+const STORAGE_KEY = "trafalgar.customScenarios.v3";
+/** Superseded keys, purged on first load so stale customs never reappear. v2 and
+ *  earlier used the old formation-based shape, incompatible with explicit ships. */
+const LEGACY_KEYS = ["trafalgar.customScenarios.v1", "trafalgar.customScenarios.v2"];
 const W = Config.ArenaHalfX;
 const H = Config.ArenaHalfZ;
 
@@ -113,6 +114,8 @@ const num = (v: unknown, fallback: number): number =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback;
 const str = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback);
 
+const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+
 function sanitizeShipClass(v: unknown): ShipClass {
   const n = Number(v);
   return n === ShipClass.FirstRate || n === ShipClass.ThirdRate || n === ShipClass.Frigate
@@ -120,22 +123,22 @@ function sanitizeShipClass(v: unknown): ShipClass {
     : ShipClass.ThirdRate;
 }
 
-function sanitizeFormation(v: unknown): FleetFormation {
-  const f = (v ?? {}) as Record<string, unknown>;
-  const rawShips = Array.isArray(f.ships) ? f.ships : [];
-  const ships = rawShips.slice(0, MAX_SHIPS_PER_SIDE).map(sanitizeShipClass);
-  if (ships.length === 0) ships.push(ShipClass.ThirdRate);
-  const anchor = (f.anchor ?? {}) as Record<string, unknown>;
-  const formation: FleetFormation = {
-    ships,
-    anchor: { x: num(anchor.x, 0), z: num(anchor.z, 0) },
-    headingDeg: num(f.headingDeg, 90),
-  };
-  const columns = Math.round(num(f.columns, 1));
-  if (columns > 1) formation.columns = Math.min(columns, ships.length);
-  if (typeof f.columnGap === "number") formation.columnGap = num(f.columnGap, Config.ColumnGap);
-  if (typeof f.arcDeg === "number" && f.arcDeg !== 0) formation.arcDeg = num(f.arcDeg, 0);
-  return formation;
+/** Coerces an arbitrary array into a clamped, capped list of ship placements.
+ *  Old (formation-shaped) data has no `ships` array of objects → yields []. */
+function sanitizeShips(v: unknown): ShipPlacement[] {
+  if (!Array.isArray(v)) return [];
+  const ships: ShipPlacement[] = [];
+  for (const raw of v.slice(0, MAX_SHIPS_PER_SIDE)) {
+    if (!raw || typeof raw !== "object") continue;
+    const s = raw as Record<string, unknown>;
+    const pos = (s.pos ?? {}) as Record<string, unknown>;
+    ships.push({
+      pos: { x: clamp(num(pos.x, 0), -W, W), z: clamp(num(pos.z, 0), -H, H) },
+      headingDeg: num(s.headingDeg, 90),
+      shipClass: sanitizeShipClass(s.shipClass),
+    });
+  }
+  return ships;
 }
 
 function sanitizeLand(v: unknown): LandShape[] | undefined {
@@ -174,11 +177,11 @@ export function sanitizeScenario(v: unknown): Scenario | null {
     windFromDegrees: num(o.windFromDegrees, 0),
     british: {
       label: str(british.label, "Royal Navy"),
-      formation: sanitizeFormation(british.formation),
+      ships: sanitizeShips(british.ships),
     },
     enemy: {
       label: str(enemy.label, "Enemy Fleet"),
-      formation: sanitizeFormation(enemy.formation),
+      ships: sanitizeShips(enemy.ships),
     },
   };
   const land = sanitizeLand(o.land);
@@ -193,8 +196,19 @@ export function sanitizeScenario(v: unknown): Scenario | null {
 /** Hard cap on ships per side (mirrors the scaling rule in scenarios.ts). */
 export const MAX_SHIPS_PER_SIDE = 12;
 
-/** A blank starting scenario for "Create Battle". */
+/** A blank starting scenario for "Create Battle": a few seed ships per side,
+ *  ready to be dragged around the arena (or deleted) in the editor. */
 export function blankScenario(): Scenario {
+  const british = (z: number, cls: ShipClass): ShipPlacement => ({
+    pos: { x: -W * 0.5, z },
+    headingDeg: 90,
+    shipClass: cls,
+  });
+  const enemy = (z: number, cls: ShipClass): ShipPlacement => ({
+    pos: { x: W * 0.5, z },
+    headingDeg: 270,
+    shipClass: cls,
+  });
   return {
     id: newScenarioId(),
     name: "New Battle",
@@ -203,19 +217,11 @@ export function blankScenario(): Scenario {
     windFromDegrees: 0,
     british: {
       label: "Royal Navy",
-      formation: {
-        ships: [ShipClass.FirstRate, ShipClass.ThirdRate, ShipClass.ThirdRate],
-        anchor: { x: -W * 0.55, z: 0 },
-        headingDeg: 90,
-      },
+      ships: [british(-H * 0.3, ShipClass.ThirdRate), british(0, ShipClass.FirstRate), british(H * 0.3, ShipClass.ThirdRate)],
     },
     enemy: {
       label: "Enemy Fleet",
-      formation: {
-        ships: [ShipClass.ThirdRate, ShipClass.ThirdRate, ShipClass.ThirdRate],
-        anchor: { x: W * 0.55, z: 0 },
-        headingDeg: 270,
-      },
+      ships: [enemy(-H * 0.3, ShipClass.ThirdRate), enemy(0, ShipClass.ThirdRate), enemy(H * 0.3, ShipClass.ThirdRate)],
     },
   };
 }

@@ -8,7 +8,7 @@
 // uniform margin.
 
 import * as Config from "../core/config";
-import { formationPositions, type FleetFormation, type Scenario } from "../core/scenarios";
+import { type ShipPlacement, type Scenario } from "../core/scenarios";
 import { shipStats } from "../ships/shipClass";
 import { headingToVector } from "../core/nav";
 import { accentCss, Faction } from "../core/faction";
@@ -47,9 +47,9 @@ export interface Tick {
   y2: number;
 }
 
-/** Maps a formation to oriented hull ticks via the shared placement math. */
-export function formationTicks(formation: FleetFormation, map: WorldMap): Tick[] {
-  return formationPositions(formation).map((p) => {
+/** Maps a list of placed ships to oriented hull ticks (one per ship). */
+export function placementTicks(ships: ReadonlyArray<ShipPlacement>, map: WorldMap): Tick[] {
+  return ships.map((p) => {
     const half = shipStats(p.shipClass).length * 0.5;
     const dir = headingToVector(p.headingDeg);
     return {
@@ -69,8 +69,8 @@ export function formationTicks(formation: FleetFormation, map: WorldMap): Tick[]
 export function scenarioDiagram(scenario: Scenario): string {
   const map = makeWorldMap(DIAGRAM_VB.w, DIAGRAM_VB.h, DIAGRAM_MARGIN);
 
-  const ticks = (formation: FleetFormation, color: string) =>
-    formationTicks(formation, map)
+  const ticks = (ships: ReadonlyArray<ShipPlacement>, color: string) =>
+    placementTicks(ships, map)
       .map(
         (t) =>
           `<line x1="${t.x1.toFixed(1)}" y1="${t.y1.toFixed(1)}" x2="${t.x2.toFixed(1)}" y2="${t.y2.toFixed(1)}" stroke="${color}" />`,
@@ -87,8 +87,8 @@ export function scenarioDiagram(scenario: Scenario): string {
     })
     .join("");
 
-  const british = ticks(scenario.british.formation, accentCss(Faction.British));
-  const enemy = ticks(scenario.enemy.formation, accentCss(Faction.FrancoSpanish));
+  const british = ticks(scenario.british.ships, accentCss(Faction.British));
+  const enemy = ticks(scenario.enemy.ships, accentCss(Faction.FrancoSpanish));
   return `
     <svg class="chart-card-diagram" viewBox="0 0 ${DIAGRAM_VB.w} ${DIAGRAM_VB.h}" aria-hidden="true">
       <rect x="1.5" y="1.5" width="${DIAGRAM_VB.w - 3}" height="${DIAGRAM_VB.h - 3}" rx="2"

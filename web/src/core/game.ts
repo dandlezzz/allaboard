@@ -18,7 +18,7 @@ import { shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
 import { buildScene } from "../rendering/scene";
-import { type Scenario, type FleetFormation, formationPositions } from "./scenarios";
+import { type Scenario, type ShipPlacement } from "./scenarios";
 import { resolveScenario } from "./scenarioStore";
 import type { Hud, Opponent } from "../ui/hud";
 import type { PointerSample } from "../board/input";
@@ -884,25 +884,25 @@ export class Game {
     // (Re)build the sea + this scenario's cosmetic coastline beneath the fleets.
     buildScene(this.renderer.seaLayer, this.scenario?.land);
 
-    // Place both fleets from the chosen scenario's formations, then derive each
-    // side's setup pad from where its ships actually ended up. With no scenario
-    // (boot screen) the field stays empty — just sea — until the menu launches one.
+    // Place both fleets from the chosen scenario's explicit ship lists, then
+    // derive each side's setup pad from where its ships actually ended up. With no
+    // scenario (boot screen) the field stays empty — just sea — until launch.
     if (this.scenario) {
-      this.spawnFleet(Faction.British, this.scenario.british.formation);
-      this.spawnFleet(Faction.FrancoSpanish, this.scenario.enemy.formation);
+      this.spawnFleet(Faction.British, this.scenario.british.ships);
+      this.spawnFleet(Faction.FrancoSpanish, this.scenario.enemy.ships);
     }
     this.computePads();
   }
 
   /**
-   * Spawns a fleet from a scenario FleetFormation. The formation→world-position
-   * math lives in `formationPositions` (shared with the menu's starting-position
-   * diagram so the two can never drift); here we just instantiate a Ship + view
-   * at each resolved placement.
+   * Spawns a fleet from a side's explicit ship placements — each ship is created
+   * exactly where the editor placed it (its own position, facing, and class). The
+   * stored `pos` is copied so the live ship can't alias the scenario data.
    */
-  private spawnFleet(faction: Faction, formation: FleetFormation): void {
-    for (const p of formationPositions(formation)) {
-      const ship = new Ship(shipStats(p.shipClass), faction, p.pos, p.headingDeg);
+  private spawnFleet(faction: Faction, ships: ReadonlyArray<ShipPlacement>): void {
+    for (const p of ships) {
+      const pos = { x: p.pos.x, z: p.pos.z };
+      const ship = new Ship(shipStats(p.shipClass), faction, pos, p.headingDeg);
       new ShipView(ship, this.renderer);
       this.ships.push(ship);
     }

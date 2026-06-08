@@ -214,16 +214,16 @@ export class Menu {
     this.sideSelect.replaceChildren();
     const sel = this.selected;
     if (!sel) return;
-    const sides: { faction: Faction; label: string; ships: Scenario["british"]["formation"]["ships"] }[] = [
+    const sides: { faction: Faction; label: string; ships: Scenario["british"]["ships"] }[] = [
       {
         faction: Faction.British,
         label: sel.british.label,
-        ships: sel.british.formation.ships,
+        ships: sel.british.ships,
       },
       {
         faction: Faction.FrancoSpanish,
         label: sel.enemy.label,
-        ships: sel.enemy.formation.ships,
+        ships: sel.enemy.ships,
       },
     ];
     for (const side of sides) {

@@ -1201,6 +1201,85 @@ body.phase-setup #setup-status {
   color: var(--ink-soft);
 }
 
+/* Per-ship placement: palette + selected-ship inspector. */
+.ship-palette {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ship-count {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-right: 2px;
+}
+.palette-btn {
+  appearance: none;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--parchment-1);
+  border: 1px dashed var(--rule-soft);
+  border-radius: 2px;
+}
+.palette-btn:hover {
+  background: var(--parchment-3);
+}
+
+.editor-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  background: var(--card);
+}
+.editor-inspector[hidden] {
+  display: none;
+}
+.inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inspector-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  font-size: 13px;
+}
+.inspector-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.inspector-fields select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--parchment-1);
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+}
+.del-ship {
+  appearance: none;
+  align-self: flex-start;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  color: #6e1f17;
+  background: var(--parchment-1);
+  border: 1px solid #a8503f;
+  border-radius: 2px;
+}
+
 @media (max-width: 820px) {
   .editor-body {
     flex-direction: column;

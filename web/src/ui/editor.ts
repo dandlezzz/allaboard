@@ -1,20 +1,22 @@
-// In-app SCENARIO EDITOR — authors/edits the same `Scenario` data the built-in
-// battles use, so anything you make plays through the unchanged spawn/combat/AI
-// pipeline. It is a plain-DOM overlay (works in the browser preview without any
-// Board hardware) layered above the menu.
+// In-app SCENARIO EDITOR — authors/edits the same `Scenario` data the game plays,
+// so anything you make runs through the unchanged spawn/combat/AI pipeline. It is
+// a plain-DOM overlay (works in the browser preview without any Board hardware)
+// layered above the menu.
 //
-// Layout: a big LIVE PREVIEW on the left (the same world↔SVG chart the menu
-// cards use, but interactive — drag fleet anchors and a heading handle, drag
-// land vertices) and a scrollable control column on the right (scenario meta,
-// wind, per-side fleet + placement, land). Edits mutate a working `draft`
-// scenario and re-render the preview live; Save persists it via the custom
-// scenario store.
+// Placement is CHESSBOARD-style: each ship is an individually placed token with
+// its own position, facing, and class — there is no formation/rows abstraction.
+// Layout: a big LIVE PREVIEW on the left (the same world↔SVG chart the menu cards
+// use, but interactive — drag ships to move, drag a handle to rotate, drag land
+// vertices) and a scrollable control column on the right (meta, wind, per-side
+// ship palettes, land). A selected ship gets an inspector under the preview
+// (type / heading / delete). Edits mutate a working `draft` and re-render live;
+// Save persists it via the custom scenario store.
 //
 // Coordinate convention is shared with `diagram.ts`: world +X → right, +Z → up
 // (north up), arena [−W, W] × [−H, H].
 
 import * as Config from "../core/config";
-import { fleetSummary, formationPositions, type Scenario, type FleetFormation } from "../core/scenarios";
+import { fleetSummary, type Scenario, type ShipPlacement } from "../core/scenarios";
 import {
   upsertCustomScenario,
   deleteCustomScenario,
@@ -23,27 +25,27 @@ import {
   newScenarioId,
   MAX_SHIPS_PER_SIDE,
 } from "../core/scenarioStore";
-import { ShipClass } from "../ships/shipClass";
+import { ShipClass, shipStats } from "../ships/shipClass";
 import { Faction, accentCss } from "../core/faction";
 import { headingToVector, vectorToHeading } from "../core/nav";
-import { makeWorldMap, formationTicks, DIAGRAM_VB, DIAGRAM_MARGIN, type WorldMap } from "./diagram";
+import { makeWorldMap, DIAGRAM_VB, DIAGRAM_MARGIN, type WorldMap } from "./diagram";
 
 const W = Config.ArenaHalfX;
 const H = Config.ArenaHalfZ;
 const SVGNS = "http://www.w3.org/2000/svg";
 
-/** World length of the on-preview heading handle arm. */
-const HEADING_ARM = W * 0.16;
+/** World distance the rotate handle sits beyond a ship's bow tip. */
+const ROT_OFFSET = W * 0.05;
 /** Pointer hit radius (SVG user units) for grabbing a handle/vertex. */
 const HIT_RADIUS = 4.5;
 
 type SideKey = "british" | "enemy";
 const SIDES: SideKey[] = ["british", "enemy"];
 
-const SHIP_TYPES: ReadonlyArray<{ value: ShipClass; label: string }> = [
-  { value: ShipClass.FirstRate, label: "First Rate" },
-  { value: ShipClass.ThirdRate, label: "Third Rate" },
-  { value: ShipClass.Frigate, label: "Frigate" },
+const SHIP_TYPES: ReadonlyArray<{ value: ShipClass; label: string; short: string }> = [
+  { value: ShipClass.FirstRate, label: "First Rate", short: "1st" },
+  { value: ShipClass.ThirdRate, label: "Third Rate", short: "3rd" },
+  { value: ShipClass.Frigate, label: "Frigate", short: "Frig" },
 ];
 
 export interface EditorCallbacks {
@@ -51,10 +53,16 @@ export interface EditorCallbacks {
   onSaved: (scenarioId: string) => void;
 }
 
+/** A reference to one placed ship. */
+interface ShipRef {
+  side: SideKey;
+  index: number;
+}
+
 /** What the preview pointer is currently dragging. */
 type DragTarget =
-  | { kind: "anchor"; side: SideKey }
-  | { kind: "heading"; side: SideKey }
+  | { kind: "ship"; side: SideKey; index: number }
+  | { kind: "rotate"; side: SideKey; index: number }
   | { kind: "vertex"; shape: number; vertex: number };
 
 export class Editor {
@@ -65,21 +73,22 @@ export class Editor {
   private readonly sidesHost: HTMLElement;
   private readonly landHost: HTMLElement;
   private readonly statusEl: HTMLElement;
+  private readonly inspectorHost: HTMLElement;
   private readonly deleteBtn: HTMLButtonElement;
   private readonly map: WorldMap = makeWorldMap(DIAGRAM_VB.w, DIAGRAM_VB.h, DIAGRAM_MARGIN);
 
   private draft: Scenario = blankDraft();
   private isNew = true;
-  /** "fleet" → drag anchors/headings; "land" → drag/add land vertices. */
-  private mode: "fleet" | "land" = "fleet";
+  /** "ships" → place/move/rotate ships; "land" → drag/add/remove land vertices. */
+  private mode: "ships" | "land" = "ships";
+  private selectedShip: ShipRef | null = null;
   private selectedLand: number | null = null;
   private drag: DragTarget | null = null;
   private addVertexCandidate: { x: number; z: number } | null = null;
   private dragMoved = false;
 
-  /** Per-side numeric inputs that drag must keep in sync. */
-  private sideInputs: Partial<Record<SideKey, { ax: HTMLInputElement; az: HTMLInputElement; heading: HTMLInputElement }>> =
-    {};
+  /** The selected-ship inspector's heading slider (synced during rotate drag). */
+  private inspectorHeading: HTMLInputElement | null = null;
 
   constructor(private readonly callbacks: EditorCallbacks) {
     this.root = document.createElement("div");
@@ -102,13 +111,14 @@ export class Editor {
         <div class="editor-body">
           <div class="editor-stage">
             <div class="editor-modes">
-              <button type="button" class="mode-btn active" data-mode="fleet">Move Fleets</button>
+              <button type="button" class="mode-btn active" data-mode="ships">Place Ships</button>
               <button type="button" class="mode-btn" data-mode="land">Edit Land</button>
               <span class="editor-hint" data-hint></span>
             </div>
             <svg class="editor-preview" viewBox="0 0 ${DIAGRAM_VB.w} ${DIAGRAM_VB.h}"
                  preserveAspectRatio="xMidYMid meet" aria-label="Live scenario preview"></svg>
             <div class="editor-status" data-status></div>
+            <div class="editor-inspector" data-inspector hidden></div>
           </div>
           <div class="editor-controls">
             <section class="editor-section" data-meta></section>
@@ -126,6 +136,7 @@ export class Editor {
     this.sidesHost = this.q("[data-sides]");
     this.landHost = this.q("[data-land]");
     this.statusEl = this.q("[data-status]");
+    this.inspectorHost = this.q("[data-inspector]");
     this.deleteBtn = this.root.querySelector('[data-act="delete"]') as HTMLButtonElement;
 
     this.wireBar();
@@ -138,10 +149,10 @@ export class Editor {
   open(scenario: Scenario, opts: { isNew: boolean }): void {
     this.draft = JSON.parse(JSON.stringify(scenario)) as Scenario;
     this.isNew = opts.isNew;
-    this.mode = "fleet";
+    this.selectedShip = null;
     this.selectedLand = null;
     this.deleteBtn.hidden = opts.isNew || !isCustomScenario(scenario.id);
-    this.setMode("fleet");
+    this.setMode("ships");
     this.renderAll();
     this.root.hidden = false;
     document.body.classList.add("editor-open");
@@ -168,20 +179,20 @@ export class Editor {
     importInput.addEventListener("change", () => this.importJson(importInput));
 
     for (const btn of Array.from(this.root.querySelectorAll<HTMLButtonElement>(".mode-btn"))) {
-      btn.addEventListener("click", () => this.setMode(btn.dataset.mode as "fleet" | "land"));
+      btn.addEventListener("click", () => this.setMode(btn.dataset.mode as "ships" | "land"));
     }
   }
 
-  private setMode(mode: "fleet" | "land"): void {
+  private setMode(mode: "ships" | "land"): void {
     this.mode = mode;
     for (const btn of Array.from(this.root.querySelectorAll<HTMLButtonElement>(".mode-btn"))) {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     }
-    const hint = this.q("[data-hint]");
-    hint.textContent =
-      mode === "fleet"
-        ? "Drag each fleet's ● anchor to move it; drag the ○ handle to aim the heading."
+    this.q("[data-hint]").textContent =
+      mode === "ships"
+        ? "Add ships from a side's palette; drag to move, drag the ○ handle to rotate, shift-click to delete."
         : "Select a land shape, drag its points; click open water to add a point, shift-click a point to remove it.";
+    this.renderInspector();
     this.refreshPreview();
   }
 
@@ -213,10 +224,10 @@ export class Editor {
       .then((text) => {
         const parsed = sanitizeScenario(JSON.parse(text));
         if (!parsed) throw new Error("not a scenario");
-        // Imported scenarios become a new local custom (fresh id) on save.
-        parsed.id = newScenarioId();
+        parsed.id = newScenarioId(); // imported → a new local custom on save
         this.draft = parsed;
         this.isNew = true;
+        this.selectedShip = null;
         this.deleteBtn.hidden = true;
         this.renderAll();
       })
@@ -230,6 +241,7 @@ export class Editor {
     this.renderWind();
     this.renderSides();
     this.renderLand();
+    this.renderInspector();
     this.update();
   }
 
@@ -266,11 +278,10 @@ export class Editor {
     const dial = document.createElementNS(SVGNS, "svg");
     dial.setAttribute("viewBox", "0 0 60 60");
     dial.classList.add("wind-dial");
-    const arrow = () => {
+    const arrow = (): void => {
       dial.replaceChildren();
-      const ring = svg("circle", { cx: 30, cy: 30, r: 26, fill: "#efe2c4", stroke: "#8a7546", "stroke-width": 1.2 });
-      dial.appendChild(ring);
-      // Wind blows FROM windFromDegrees → the arrow points the way it blows (TO).
+      dial.appendChild(svg("circle", { cx: 30, cy: 30, r: 26, fill: "#efe2c4", stroke: "#8a7546", "stroke-width": 1.2 }));
+      // Wind blows FROM windFromDegrees; mark that bearing on the dial.
       const fromDir = headingToVector(this.draft.windFromDegrees);
       const tx = 30 + fromDir.x * 18;
       const ty = 30 - fromDir.z * 18; // +Z up
@@ -303,13 +314,11 @@ export class Editor {
 
   private renderSides(): void {
     this.sidesHost.replaceChildren();
-    this.sideInputs = {};
     for (const side of SIDES) this.sidesHost.appendChild(this.renderSide(side));
   }
 
   private renderSide(side: SideKey): HTMLElement {
     const spec = this.draft[side];
-    const f = spec.formation;
     const accent = accentCss(side === "british" ? Faction.British : Faction.FrancoSpanish);
     const wrap = el("div", "side-editor");
 
@@ -325,115 +334,74 @@ export class Editor {
     head.appendChild(labelInput);
     wrap.appendChild(head);
 
-    // --- Fleet list ---
-    const summary = el("div", "fleet-summary", fleetSummary(f.ships));
-    wrap.appendChild(summary);
-    const list = el("div", "ship-list");
-    const rebuildList = (): void => {
-      list.replaceChildren();
-      f.ships.forEach((cls, i) => {
-        const row = el("div", "ship-row");
-        row.appendChild(el("span", "ship-index", i === 0 ? "★" : String(i + 1)));
-        const sel = document.createElement("select");
-        for (const t of SHIP_TYPES) {
-          const opt = document.createElement("option");
-          opt.value = String(t.value);
-          opt.textContent = t.label;
-          if (t.value === cls) opt.selected = true;
-          sel.appendChild(opt);
-        }
-        sel.addEventListener("change", () => {
-          f.ships[i] = Number(sel.value) as ShipClass;
-          summary.textContent = fleetSummary(f.ships);
-          this.update();
-        });
-        row.appendChild(sel);
-        row.appendChild(
-          iconBtn("↑", "Move up", i === 0, () => {
-            [f.ships[i - 1], f.ships[i]] = [f.ships[i], f.ships[i - 1]];
-            rebuildList();
-            this.update();
-          }),
-        );
-        row.appendChild(
-          iconBtn("↓", "Move down", i === f.ships.length - 1, () => {
-            [f.ships[i + 1], f.ships[i]] = [f.ships[i], f.ships[i + 1]];
-            rebuildList();
-            this.update();
-          }),
-        );
-        row.appendChild(
-          iconBtn("✕", "Remove", f.ships.length <= 1, () => {
-            f.ships.splice(i, 1);
-            if (f.columns && f.columns > f.ships.length) f.columns = Math.max(1, f.ships.length);
-            rebuildList();
-            summary.textContent = fleetSummary(f.ships);
-            this.update();
-          }),
-        );
-        list.appendChild(row);
-      });
-    };
-    rebuildList();
-    wrap.appendChild(list);
+    wrap.appendChild(el("div", "fleet-summary", fleetSummary(spec.ships) || "No ships placed"));
 
-    const addBtn = el("button", "add-ship") as HTMLButtonElement;
-    addBtn.type = "button";
-    addBtn.textContent = "＋ Add ship";
-    addBtn.addEventListener("click", () => {
-      if (f.ships.length >= MAX_SHIPS_PER_SIDE) {
-        this.flash(`Max ${MAX_SHIPS_PER_SIDE} ships per side.`);
-        return;
-      }
-      f.ships.push(ShipClass.ThirdRate);
-      rebuildList();
-      summary.textContent = fleetSummary(f.ships);
-      this.update();
-    });
-    wrap.appendChild(addBtn);
-
-    // --- Placement ---
-    const place = el("div", "placement");
-    const ax = numInput(Math.round(f.anchor.x), { min: -Math.round(W), max: Math.round(W), step: 5 }, (v) => {
-      f.anchor.x = v;
-      this.update();
-    });
-    const az = numInput(Math.round(f.anchor.z), { min: -Math.round(H), max: Math.round(H), step: 5 }, (v) => {
-      f.anchor.z = v;
-      this.update();
-    });
-    place.appendChild(labeled("Anchor X", ax));
-    place.appendChild(labeled("Anchor Z", az));
-
-    const heading = sliderInput(Math.round(normDeg(f.headingDeg)), { min: 0, max: 359, step: 1 }, (v) => {
-      f.headingDeg = v;
-      this.update();
-    });
-    place.appendChild(labeled("Heading °", heading.wrap));
-
-    const cols = numInput(f.columns ?? 1, { min: 1, max: MAX_SHIPS_PER_SIDE, step: 1 }, (v) => {
-      if (v <= 1) delete f.columns;
-      else f.columns = Math.min(v, f.ships.length);
-      this.update();
-    });
-    place.appendChild(labeled("Columns", cols));
-
-    const gap = sliderInput(Math.round(f.columnGap ?? Config.ColumnGap + 8 * Config.ShipScale), { min: 0, max: 400, step: 5 }, (v) => {
-      f.columnGap = v;
-      this.update();
-    });
-    place.appendChild(labeled("Column gap", gap.wrap));
-
-    const arc = sliderInput(Math.round(f.arcDeg ?? 0), { min: -90, max: 90, step: 1 }, (v) => {
-      if (v === 0) delete f.arcDeg;
-      else f.arcDeg = v;
-      this.update();
-    });
-    place.appendChild(labeled("Curve (arc°)", arc.wrap));
-
-    wrap.appendChild(place);
-    this.sideInputs[side] = { ax, az, heading: heading.input };
+    const palette = el("div", "ship-palette");
+    palette.appendChild(el("span", "ship-count", `${spec.ships.length}/${MAX_SHIPS_PER_SIDE}`));
+    for (const t of SHIP_TYPES) {
+      const btn = el("button", "palette-btn") as HTMLButtonElement;
+      btn.type = "button";
+      btn.textContent = `＋ ${t.short}`;
+      btn.title = `Add a ${t.label}`;
+      btn.addEventListener("click", () => this.addShip(side, t.value));
+      palette.appendChild(btn);
+    }
+    wrap.appendChild(palette);
     return wrap;
+  }
+
+  private renderInspector(): void {
+    this.inspectorHost.replaceChildren();
+    this.inspectorHeading = null;
+    const ref = this.selectedShip;
+    if (this.mode !== "ships" || !ref) {
+      this.inspectorHost.hidden = true;
+      return;
+    }
+    const ship = this.draft[ref.side].ships[ref.index];
+    if (!ship) {
+      this.inspectorHost.hidden = true;
+      return;
+    }
+    this.inspectorHost.hidden = false;
+    const accent = accentCss(ref.side === "british" ? Faction.British : Faction.FrancoSpanish);
+
+    const head = el("div", "inspector-head");
+    head.appendChild(svgSwatch(accent));
+    head.appendChild(el("span", "inspector-title", "Selected ship"));
+    this.inspectorHost.appendChild(head);
+
+    const fields = el("div", "inspector-fields");
+
+    const type = document.createElement("select");
+    for (const t of SHIP_TYPES) {
+      const opt = document.createElement("option");
+      opt.value = String(t.value);
+      opt.textContent = t.label;
+      if (t.value === ship.shipClass) opt.selected = true;
+      type.appendChild(opt);
+    }
+    type.addEventListener("change", () => {
+      ship.shipClass = Number(type.value) as ShipClass;
+      this.renderSides();
+      this.update();
+    });
+    fields.appendChild(labeled("Type", type));
+
+    const heading = sliderInput(Math.round(normDeg(ship.headingDeg)), { min: 0, max: 359, step: 1 }, (v) => {
+      ship.headingDeg = v;
+      this.refreshPreview();
+    });
+    this.inspectorHeading = heading.input;
+    fields.appendChild(labeled("Heading °", heading.wrap));
+
+    const del = el("button", "del-ship") as HTMLButtonElement;
+    del.type = "button";
+    del.textContent = "✕ Delete ship";
+    del.addEventListener("click", () => this.deleteSelectedShip());
+    fields.appendChild(del);
+
+    this.inspectorHost.appendChild(fields);
   }
 
   private renderLand(): void {
@@ -445,7 +413,6 @@ export class Editor {
     addShape.textContent = "＋ Add land";
     addShape.addEventListener("click", () => {
       if (!this.draft.land) this.draft.land = [];
-      // A small default coast patch in the lower-left, ready to drag into shape.
       this.draft.land.push({
         polygon: [
           { x: -W * 0.5, z: -H * 0.7 },
@@ -502,13 +469,49 @@ export class Editor {
     });
   }
 
+  // ---- Ship operations ---------------------------------------------------
+
+  private addShip(side: SideKey, shipClass: ShipClass): void {
+    const spec = this.draft[side];
+    if (spec.ships.length >= MAX_SHIPS_PER_SIDE) {
+      this.flash(`Max ${MAX_SHIPS_PER_SIDE} ships per side.`);
+      return;
+    }
+    // Spread successive adds across a small grid near that side's half so they
+    // don't stack (the user then drags them into place).
+    const n = spec.ships.length;
+    const baseX = side === "british" ? -W * 0.5 : W * 0.5;
+    const col = n % 4;
+    const row = Math.floor(n / 4) % 3;
+    const pos = {
+      x: clamp(baseX + (col - 1.5) * (W * 0.08), -W, W),
+      z: clamp((row - 1) * (H * 0.28), -H, H),
+    };
+    spec.ships.push({ pos, headingDeg: side === "british" ? 90 : 270, shipClass });
+    this.selectedShip = { side, index: spec.ships.length - 1 };
+    this.setMode("ships");
+    this.renderSides();
+    this.renderInspector();
+    this.update();
+  }
+
+  private deleteSelectedShip(): void {
+    const ref = this.selectedShip;
+    if (!ref) return;
+    this.draft[ref.side].ships.splice(ref.index, 1);
+    this.selectedShip = null;
+    this.renderSides();
+    this.renderInspector();
+    this.update();
+  }
+
   // ---- Preview (interactive) --------------------------------------------
 
   private refreshPreview(): void {
     const svgRoot = this.preview;
     svgRoot.replaceChildren();
 
-    // Parchment arena.
+    // Parchment arena + inner play-area border.
     svgRoot.appendChild(
       svg("rect", {
         x: 1.5,
@@ -521,7 +524,6 @@ export class Editor {
         "stroke-width": 0.8,
       }),
     );
-    // Inner arena border (the actual [-W,W]×[-H,H] play area).
     svgRoot.appendChild(
       svg("rect", {
         x: this.map.toSvgX(-W),
@@ -565,31 +567,56 @@ export class Editor {
       }
     });
 
-    // Fleet ticks.
+    // Ships — one oriented hull tick each, with the selected one highlighted.
     for (const side of SIDES) {
       const accent = accentCss(side === "british" ? Faction.British : Faction.FrancoSpanish);
-      const g = svg("g", { stroke: accent, "stroke-width": 2, "stroke-linecap": "round" });
-      for (const t of formationTicks(this.draft[side].formation, this.map)) {
-        g.appendChild(svg("line", { x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2 }));
-      }
-      svgRoot.appendChild(g);
+      this.draft[side].ships.forEach((ship, index) => {
+        const g = this.shipGeom(ship);
+        const selected =
+          this.mode === "ships" &&
+          this.selectedShip?.side === side &&
+          this.selectedShip?.index === index;
+        if (selected) {
+          const r = Math.hypot(g.cx - g.bx, g.cy - g.by) + 2;
+          svgRoot.appendChild(
+            svg("circle", { cx: g.cx, cy: g.cy, r, fill: "none", stroke: "#3a2c1a", "stroke-width": 0.6, "stroke-dasharray": "1.5 1.5" }),
+          );
+          svgRoot.appendChild(svg("line", { x1: g.bx, y1: g.by, x2: g.rx, y2: g.ry, stroke: "#3a2c1a", "stroke-width": 0.6 }));
+          svgRoot.appendChild(svg("circle", { cx: g.rx, cy: g.ry, r: 1.8, fill: "#fff4d6", stroke: "#3a2c1a", "stroke-width": 0.6 }));
+        }
+        svgRoot.appendChild(
+          svg("line", {
+            x1: g.sx,
+            y1: g.sy,
+            x2: g.bx,
+            y2: g.by,
+            stroke: accent,
+            "stroke-width": selected ? 3 : 2,
+            "stroke-linecap": "round",
+          }),
+        );
+        // A small bow dot marks facing direction.
+        svgRoot.appendChild(svg("circle", { cx: g.bx, cy: g.by, r: 0.9, fill: accent }));
+      });
     }
+  }
 
-    // Anchor + heading handles (fleet mode only).
-    if (this.mode === "fleet") {
-      for (const side of SIDES) {
-        const f = this.draft[side].formation;
-        const accent = accentCss(side === "british" ? Faction.British : Faction.FrancoSpanish);
-        const ax = this.map.toSvgX(f.anchor.x);
-        const ay = this.map.toSvgY(f.anchor.z);
-        const dir = headingToVector(f.headingDeg);
-        const hx = this.map.toSvgX(f.anchor.x + dir.x * HEADING_ARM);
-        const hy = this.map.toSvgY(f.anchor.z + dir.z * HEADING_ARM);
-        svgRoot.appendChild(svg("line", { x1: ax, y1: ay, x2: hx, y2: hy, stroke: accent, "stroke-width": 0.8 }));
-        svgRoot.appendChild(svg("circle", { cx: hx, cy: hy, r: 2, fill: "#fff4d6", stroke: accent, "stroke-width": 1 }));
-        svgRoot.appendChild(svg("circle", { cx: ax, cy: ay, r: 3, fill: accent, stroke: "#fff4d6", "stroke-width": 1 }));
-      }
-    }
+  /** SVG-space geometry for a placed ship (centre, bow, stern, rotate handle). */
+  private shipGeom(p: ShipPlacement): {
+    cx: number; cy: number; bx: number; by: number; sx: number; sy: number; rx: number; ry: number;
+  } {
+    const half = shipStats(p.shipClass).length * 0.5;
+    const dir = headingToVector(p.headingDeg);
+    return {
+      cx: this.map.toSvgX(p.pos.x),
+      cy: this.map.toSvgY(p.pos.z),
+      bx: this.map.toSvgX(p.pos.x + dir.x * half),
+      by: this.map.toSvgY(p.pos.z + dir.z * half),
+      sx: this.map.toSvgX(p.pos.x - dir.x * half),
+      sy: this.map.toSvgY(p.pos.z - dir.z * half),
+      rx: this.map.toSvgX(p.pos.x + dir.x * (half + ROT_OFFSET)),
+      ry: this.map.toSvgY(p.pos.z + dir.z * (half + ROT_OFFSET)),
+    };
   }
 
   private wirePreviewPointer(): void {
@@ -599,25 +626,54 @@ export class Editor {
       this.dragMoved = false;
       this.addVertexCandidate = null;
 
-      if (this.mode === "land" && this.selectedLand !== null) {
+      if (this.mode === "ships") {
+        // A selected ship's rotate handle wins (it sits beyond the bow).
+        if (this.selectedShip) {
+          const s = this.draft[this.selectedShip.side].ships[this.selectedShip.index];
+          if (s) {
+            const g = this.shipGeom(s);
+            if (dist2(p.x, p.y, g.rx, g.ry) <= HIT_RADIUS * HIT_RADIUS) {
+              this.drag = { kind: "rotate", side: this.selectedShip.side, index: this.selectedShip.index };
+            }
+          }
+        }
+        if (!this.drag) {
+          const hit = this.hitShip(p);
+          if (hit) {
+            if (e.shiftKey) {
+              this.draft[hit.side].ships.splice(hit.index, 1);
+              this.selectedShip = null;
+              this.renderSides();
+              this.renderInspector();
+              this.update();
+            } else {
+              this.selectedShip = hit;
+              this.drag = { kind: "ship", side: hit.side, index: hit.index };
+              this.renderInspector();
+              this.refreshPreview();
+            }
+          } else if (this.selectedShip) {
+            this.selectedShip = null;
+            this.renderInspector();
+            this.refreshPreview();
+          }
+        }
+      } else if (this.mode === "land" && this.selectedLand !== null) {
         const shape = this.draft.land?.[this.selectedLand];
         if (shape) {
           const vi = this.hitVertex(shape.polygon, p);
           if (vi >= 0) {
             if (e.shiftKey && shape.polygon.length > 3) {
               shape.polygon.splice(vi, 1);
-              this.update();
               this.renderLand();
+              this.update();
               return;
             }
             this.drag = { kind: "vertex", shape: this.selectedLand, vertex: vi };
           } else {
-            // Empty water: remember to add a vertex on click-release.
             this.addVertexCandidate = { x: this.map.toWorldX(p.x), z: this.map.toWorldZ(p.y) };
           }
         }
-      } else if (this.mode === "fleet") {
-        this.drag = this.hitFleetHandle(p);
       }
 
       if (this.drag || this.addVertexCandidate) {
@@ -632,20 +688,21 @@ export class Editor {
       const p = this.toUser(e);
       const wx = this.map.toWorldX(p.x);
       const wz = this.map.toWorldZ(p.y);
-      if (this.drag.kind === "anchor") {
-        const f = this.draft[this.drag.side].formation;
-        f.anchor.x = clamp(wx, -W, W);
-        f.anchor.z = clamp(wz, -H, H);
-        this.syncSide(this.drag.side);
-      } else if (this.drag.kind === "heading") {
-        const f = this.draft[this.drag.side].formation;
-        f.headingDeg = Math.round(normDeg(vectorToHeading({ x: wx - f.anchor.x, z: wz - f.anchor.z })));
-        this.syncSide(this.drag.side);
+      if (this.drag.kind === "ship") {
+        const s = this.draft[this.drag.side].ships[this.drag.index];
+        if (s) s.pos = { x: clamp(wx, -W, W), z: clamp(wz, -H, H) };
+      } else if (this.drag.kind === "rotate") {
+        const s = this.draft[this.drag.side].ships[this.drag.index];
+        if (s) {
+          s.headingDeg = Math.round(normDeg(vectorToHeading({ x: wx - s.pos.x, z: wz - s.pos.z })));
+          if (this.inspectorHeading) {
+            this.inspectorHeading.value = String(s.headingDeg);
+            this.inspectorHeading.dispatchEvent(new Event("sync"));
+          }
+        }
       } else if (this.drag.kind === "vertex") {
         const shape = this.draft.land?.[this.drag.shape];
-        if (shape) {
-          shape.polygon[this.drag.vertex] = { x: clamp(wx, -W * 1.6, W * 1.6), z: clamp(wz, -H * 1.6, H * 1.6) };
-        }
+        if (shape) shape.polygon[this.drag.vertex] = { x: clamp(wx, -W * 1.6, W * 1.6), z: clamp(wz, -H * 1.6, H * 1.6) };
       }
       this.refreshPreview();
       this.validate();
@@ -683,22 +740,22 @@ export class Editor {
     };
   }
 
-  private hitFleetHandle(p: { x: number; y: number }): DragTarget | null {
-    // Heading handles take priority (they sit further out than the anchor dot).
+  /** Nearest ship (either side) whose hull tick is within grab range, or null. */
+  private hitShip(p: { x: number; y: number }): ShipRef | null {
+    let best: ShipRef | null = null;
+    let bestD = Infinity;
     for (const side of SIDES) {
-      const f = this.draft[side].formation;
-      const dir = headingToVector(f.headingDeg);
-      const hx = this.map.toSvgX(f.anchor.x + dir.x * HEADING_ARM);
-      const hy = this.map.toSvgY(f.anchor.z + dir.z * HEADING_ARM);
-      if (dist2(p.x, p.y, hx, hy) <= HIT_RADIUS * HIT_RADIUS) return { kind: "heading", side };
+      this.draft[side].ships.forEach((ship, index) => {
+        const g = this.shipGeom(ship);
+        const reach = Math.max(HIT_RADIUS, Math.hypot(g.cx - g.bx, g.cy - g.by) + 1.5);
+        const d = dist2(p.x, p.y, g.cx, g.cy);
+        if (d <= reach * reach && d < bestD) {
+          bestD = d;
+          best = { side, index };
+        }
+      });
     }
-    for (const side of SIDES) {
-      const f = this.draft[side].formation;
-      const ax = this.map.toSvgX(f.anchor.x);
-      const ay = this.map.toSvgY(f.anchor.z);
-      if (dist2(p.x, p.y, ax, ay) <= HIT_RADIUS * HIT_RADIUS) return { kind: "anchor", side };
-    }
-    return null;
+    return best;
   }
 
   private hitVertex(poly: ReadonlyArray<{ x: number; z: number }>, p: { x: number; y: number }): number {
@@ -710,26 +767,13 @@ export class Editor {
     return -1;
   }
 
-  /** Pushes draft values back into a side's numeric inputs during a drag. */
-  private syncSide(side: SideKey): void {
-    const refs = this.sideInputs[side];
-    if (!refs) return;
-    const f = this.draft[side].formation;
-    refs.ax.value = String(Math.round(f.anchor.x));
-    refs.az.value = String(Math.round(f.anchor.z));
-    refs.heading.value = String(Math.round(normDeg(f.headingDeg)));
-    refs.heading.dispatchEvent(new Event("sync"));
-  }
-
   // ---- Validation --------------------------------------------------------
 
   private validate(): void {
     const warnings: string[] = [];
     for (const side of SIDES) {
-      const f = this.draft[side].formation;
-      const label = this.draft[side].label || side;
-      if (f.ships.length < 1) warnings.push(`${label}: needs at least one ship.`);
-      if (offField(f)) warnings.push(`${label}: some ships start off-field — drag the anchor inboard.`);
+      const spec = this.draft[side];
+      if (spec.ships.length < 1) warnings.push(`${spec.label || side}: no ships placed.`);
     }
     this.statusEl.classList.toggle("has-warning", warnings.length > 0);
     this.statusEl.textContent = warnings.length ? `⚠ ${warnings.join("  ")}` : "Looks shipshape.";
@@ -756,17 +800,9 @@ function blankDraft(): Scenario {
     year: 1805,
     blurb: "",
     windFromDegrees: 0,
-    british: { label: "Royal Navy", formation: { ships: [ShipClass.ThirdRate], anchor: { x: -W * 0.5, z: 0 }, headingDeg: 90 } },
-    enemy: { label: "Enemy Fleet", formation: { ships: [ShipClass.ThirdRate], anchor: { x: W * 0.5, z: 0 }, headingDeg: 270 } },
+    british: { label: "Royal Navy", ships: [] },
+    enemy: { label: "Enemy Fleet", ships: [] },
   };
-}
-
-/** True if any spawned ship centre lands outside the arena. */
-function offField(f: FleetFormation): boolean {
-  for (const p of formationPositions(f)) {
-    if (p.pos.x < -W || p.pos.x > W || p.pos.z < -H || p.pos.z > H) return true;
-  }
-  return false;
 }
 
 function normDeg(d: number): number {
@@ -827,14 +863,6 @@ function numberRow(
   opts: { min: number; max: number; step: number },
   onInput: (v: number) => void,
 ): HTMLElement {
-  return labeled(label, numInput(value, opts, onInput));
-}
-
-function numInput(
-  value: number,
-  opts: { min: number; max: number; step: number },
-  onInput: (v: number) => void,
-): HTMLInputElement {
   const input = document.createElement("input");
   input.type = "number";
   input.min = String(opts.min);
@@ -845,7 +873,7 @@ function numInput(
     if (input.value === "" || input.value === "-") return;
     onInput(clamp(Number(input.value), opts.min, opts.max));
   });
-  return input;
+  return labeled(label, input);
 }
 
 /** A range slider plus a live readout; returns the wrapper and the input. */
