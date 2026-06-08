@@ -896,13 +896,20 @@ body.phase-setup #setup-status {
   font-size: clamp(18px, 2.6vh, 24px);
   letter-spacing: 1px;
 }
-.editor-bar-actions {
+
+/* Action cluster lives in a BOTTOM bar — kept clear of the top-right corner
+ * where the Board's hardware menu button overlays the WebView. */
+.editor-foot {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
+  padding: 10px clamp(12px, 2vw, 22px);
+  border-top: 1.5px solid var(--rule);
 }
-.editor-bar-actions .chart-link {
+.editor-foot-spacer {
+  flex: 1;
+}
+.editor-foot .chart-link {
   align-self: center;
 }
 .chart-link.danger {

@@ -102,18 +102,13 @@ export class Editor {
     this.root.id = "editor";
     this.root.className = "editor-overlay";
     this.root.hidden = true;
+    // NOTE: the action buttons live in a BOTTOM bar, never the top-right corner —
+    // on the Board the OS hardware menu button overlays the top-right and would
+    // swallow taps meant for Save/Cancel.
     this.root.innerHTML = `
       <div class="editor-panel">
         <header class="editor-bar">
           <span class="editor-title">Battle Editor</span>
-          <div class="editor-bar-actions">
-            <input id="editor-import" type="file" accept="application/json" hidden />
-            <button type="button" class="chart-link" data-act="import">Import</button>
-            <button type="button" class="chart-link" data-act="export">Export</button>
-            <button type="button" class="chart-link danger" data-act="delete">Delete</button>
-            <button type="button" class="chart-link" data-act="cancel">Cancel</button>
-            <button type="button" class="chart-btn small" data-act="save">Save Battle</button>
-          </div>
         </header>
         <div class="editor-body">
           <div class="editor-stage">
@@ -134,6 +129,15 @@ export class Editor {
             <section class="editor-section" data-land></section>
           </div>
         </div>
+        <footer class="editor-foot">
+          <input id="editor-import" type="file" accept="application/json" hidden />
+          <button type="button" class="chart-link danger" data-act="delete">Delete</button>
+          <span class="editor-foot-spacer"></span>
+          <button type="button" class="chart-link" data-act="import">Import</button>
+          <button type="button" class="chart-link" data-act="export">Export</button>
+          <button type="button" class="chart-link" data-act="cancel">Cancel</button>
+          <button type="button" class="chart-btn small" data-act="save">Save Battle</button>
+        </footer>
       </div>`;
     document.body.appendChild(this.root);
 
@@ -206,8 +210,18 @@ export class Editor {
   private save(): void {
     if (!this.draft.name.trim()) this.draft.name = "Untitled Battle";
     const clean = sanitizeScenario(this.draft);
-    if (!clean) return;
-    upsertCustomScenario(clean);
+    if (!clean) {
+      this.flash("Couldn't save — the battle data is invalid.");
+      return;
+    }
+    // A side with no ships is allowed (saved as-is) but flagged so the user
+    // knows; we never silently no-op on Save.
+    try {
+      upsertCustomScenario(clean);
+    } catch {
+      this.flash("Couldn't save — storage is unavailable.");
+      return;
+    }
     this.callbacks.onSaved(clean.id);
     this.close();
   }
