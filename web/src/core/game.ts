@@ -5,7 +5,7 @@
 
 import * as Config from "./config";
 import { Faction, ControlMode, accentColor, displayName, enemyOf } from "./faction";
-import { normalize360, headingToVector, vectorToHeading, angleDifference } from "./nav";
+import { normalize360, vectorToHeading, angleDifference } from "./nav";
 import { seed } from "./rng";
 import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
 import { Wind, pointOfSailColor } from "../combat/wind";
@@ -14,11 +14,17 @@ import { FleetAI, AIPersona } from "../ai/fleetAI";
 import { SailSetting } from "../ships/sail";
 import { nextAmmo } from "../ships/ammo";
 import { Ship, ShipState } from "../ships/ship";
-import { ShipClass, shipStats } from "../ships/shipClass";
+import { shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
 import { buildScene } from "../rendering/scene";
-import { type Scenario, type FleetFormation, SCENARIOS, getScenario } from "./scenarios";
+import {
+  type Scenario,
+  type FleetFormation,
+  SCENARIOS,
+  getScenario,
+  formationPositions,
+} from "./scenarios";
 import type { Hud, Opponent } from "../ui/hud";
 import type { PointerSample } from "../board/input";
 import type { PauseMenu } from "../board/pauseMenu";
@@ -888,45 +894,16 @@ export class Game {
   }
 
   /**
-   * Spawns a fleet from a scenario FleetFormation. Ships are placed bow-to-stern
-   * from the REAR `anchor` marching FORWARD along `headingDeg`; with `columns > 1`
-   * the ship list is split round-robin into that many parallel columns spaced
-   * `columnGap` abeam (so a heavy ship leads each column). Spacing within a column
-   * is cumulative from each ship's half-length plus `ColumnGap`, so neighbours
-   * never overlap regardless of the class mix. This one primitive expresses a
-   * single line-ahead, a long battle line, or Nelson's two attack columns alike.
+   * Spawns a fleet from a scenario FleetFormation. The formation→world-position
+   * math lives in `formationPositions` (shared with the menu's starting-position
+   * diagram so the two can never drift); here we just instantiate a Ship + view
+   * at each resolved placement.
    */
   private spawnFleet(faction: Faction, formation: FleetFormation): void {
-    const cols = Math.max(1, formation.columns ?? 1);
-    const columnGap = formation.columnGap ?? Config.ColumnGap + 8 * Config.ShipScale;
-    const forward = headingToVector(formation.headingDeg); // bow direction / column axis
-    const right = headingToVector(formation.headingDeg + 90); // abeam (to starboard)
-
-    // Distribute ships round-robin across the columns so the flagship (index 0)
-    // and the next-heaviest ship head columns 0 and 1.
-    const columnLists: ShipClass[][] = Array.from({ length: cols }, () => []);
-    formation.ships.forEach((c, i) => columnLists[i % cols].push(c));
-
-    for (let ci = 0; ci < cols; ci++) {
-      const list = columnLists[ci];
-      if (list.length === 0) continue;
-      const lateral = (ci - (cols - 1) / 2) * columnGap;
-      const colAnchor = add(formation.anchor, scale(right, lateral));
-
-      const lengths = list.map((c) => shipStats(c).length);
-      const distFromRear = new Array<number>(list.length);
-      distFromRear[list.length - 1] = 0;
-      for (let i = list.length - 2; i >= 0; i--) {
-        distFromRear[i] =
-          distFromRear[i + 1] + lengths[i + 1] * 0.5 + Config.ColumnGap + lengths[i] * 0.5;
-      }
-
-      for (let i = 0; i < list.length; i++) {
-        const pos = add(colAnchor, scale(forward, distFromRear[i]));
-        const ship = new Ship(shipStats(list[i]), faction, pos, formation.headingDeg);
-        new ShipView(ship, this.renderer);
-        this.ships.push(ship);
-      }
+    for (const p of formationPositions(formation)) {
+      const ship = new Ship(shipStats(p.shipClass), faction, p.pos, p.headingDeg);
+      new ShipView(ship, this.renderer);
+      this.ships.push(ship);
     }
   }
 

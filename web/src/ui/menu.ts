@@ -12,8 +12,11 @@
 // the browser build works without any Board hardware; the Game is driven only
 // through the onBegin callback. Gameplay is untouched.
 
-import { SCENARIOS, fleetSummary, type Scenario } from "../core/scenarios";
+import { SCENARIOS, fleetSummary, formationPositions, type Scenario } from "../core/scenarios";
 import { Faction, accentCss } from "../core/faction";
+import { headingToVector } from "../core/nav";
+import { shipStats } from "../ships/shipClass";
+import * as Config from "../core/config";
 import { AIPersona } from "../ai/fleetAI";
 import type { Opponent } from "./hud";
 
@@ -109,7 +112,7 @@ export class Menu {
           <span class="chart-card-name">${s.name}</span>
           <span class="chart-card-year">${s.year}</span>
         </div>
-        ${shipGlyph()}
+        ${scenarioDiagram(s)}
         <div class="chart-card-legend">
           <span class="legend-row"><i class="swatch" style="background:${accentCss(
             Faction.British,
@@ -224,17 +227,45 @@ export class Menu {
   }
 }
 
-/** A tiny engraved-style ship glyph for the chart cards (inline, no assets). */
-function shipGlyph(): string {
+// Mini starting-position diagram for a chart card. Drawn straight from the same
+// `formationPositions` math the live spawner uses, so the card always shows where
+// the ships actually start. World coordinates (X = long axis, Z = short axis) map
+// into the viewBox with +X → right and +Z → up (north up); each ship is a short
+// tick drawn along its bow heading and tinted with its side's accent colour, over
+// a faint parchment "chart" of the whole arena.
+const DIAGRAM_VB = { w: 120, h: 68 } as const;
+const DIAGRAM_MARGIN = 7;
+
+function scenarioDiagram(scenario: Scenario): string {
+  const W = Config.ArenaHalfX;
+  const H = Config.ArenaHalfZ;
+  const innerW = DIAGRAM_VB.w - 2 * DIAGRAM_MARGIN;
+  const innerH = DIAGRAM_VB.h - 2 * DIAGRAM_MARGIN;
+  const px = (x: number) => DIAGRAM_MARGIN + ((x + W) / (2 * W)) * innerW;
+  const pz = (z: number) => DIAGRAM_MARGIN + ((H - z) / (2 * H)) * innerH;
+
+  const fleetTicks = (formation: Scenario["british"]["formation"], color: string) =>
+    formationPositions(formation)
+      .map((p) => {
+        const half = shipStats(p.shipClass).length * 0.5;
+        const dir = headingToVector(p.headingDeg);
+        const x1 = px(p.pos.x - dir.x * half).toFixed(1);
+        const y1 = pz(p.pos.z - dir.z * half).toFixed(1);
+        const x2 = px(p.pos.x + dir.x * half).toFixed(1);
+        const y2 = pz(p.pos.z + dir.z * half).toFixed(1);
+        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" />`;
+      })
+      .join("");
+
+  const british = fleetTicks(scenario.british.formation, accentCss(Faction.British));
+  const enemy = fleetTicks(scenario.enemy.formation, accentCss(Faction.FrancoSpanish));
   return `
-    <svg class="chart-card-glyph" viewBox="0 0 120 56" aria-hidden="true">
-      <g fill="none" stroke="#5a4327" stroke-width="1.4" stroke-linecap="round">
-        <path d="M18 44 Q60 54 102 44 L96 38 L24 38 Z" fill="#cdbb8a" />
-        <line x1="40" y1="38" x2="40" y2="8" /><line x1="60" y1="38" x2="60" y2="4" />
-        <line x1="80" y1="38" x2="80" y2="8" />
-        <path d="M40 12 q14 6 0 12 z" fill="#efe2c4" /><path d="M40 12 q-14 6 0 12 z" fill="#efe2c4" />
-        <path d="M60 8 q16 7 0 14 z" fill="#efe2c4" /><path d="M60 8 q-16 7 0 14 z" fill="#efe2c4" />
-        <path d="M80 12 q14 6 0 12 z" fill="#efe2c4" /><path d="M80 12 q-14 6 0 12 z" fill="#efe2c4" />
+    <svg class="chart-card-diagram" viewBox="0 0 ${DIAGRAM_VB.w} ${DIAGRAM_VB.h}" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="${DIAGRAM_VB.w - 3}" height="${DIAGRAM_VB.h - 3}" rx="2"
+            fill="#e7d4ac" stroke="#8a7546" stroke-width="0.8" />
+      <g stroke-width="2" stroke-linecap="round">
+        ${british}
+        ${enemy}
       </g>
     </svg>`;
 }

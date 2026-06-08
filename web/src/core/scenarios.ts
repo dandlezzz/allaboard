@@ -19,8 +19,9 @@
 //   Frigate    (small, fast — also used to stand in for brigs/sloops/blockships).
 
 import * as Config from "./config";
-import { ShipClass } from "../ships/shipClass";
-import type { Vec2 } from "./vec";
+import { ShipClass, shipStats } from "../ships/shipClass";
+import { headingToVector } from "./nav";
+import { add, scale, type Vec2 } from "./vec";
 
 const F1 = ShipClass.FirstRate;
 const R3 = ShipClass.ThirdRate;
@@ -52,6 +53,26 @@ export interface FleetFormation {
   columns?: number;
   /** Abeam spacing between columns in world units (default derived). */
   columnGap?: number;
+  /**
+   * Optional total heading bend (degrees) spread evenly across each column so
+   * the line traces a gentle arc instead of a dead-straight column: the rear
+   * ship keeps `headingDeg`, each successive ship forward rotates a little more,
+   * and the front ship ends `arcDeg` off the base heading. Default 0 (straight),
+   * so every existing scenario is unaffected. Used for the Combined Fleet's
+   * crescent line of battle at Trafalgar. Positive bends to starboard, negative
+   * to port (relative to the marching direction).
+   */
+  arcDeg?: number;
+}
+
+/**
+ * One spawned ship's resolved placement: where it sits, which way its bow points
+ * (per-ship, so a curved line fans along its arc), and its class (for sizing).
+ */
+export interface ShipPlacement {
+  pos: Vec2;
+  headingDeg: number;
+  shipClass: ShipClass;
 }
 
 /** Per-side scenario data: a display label + the starting formation. */
@@ -95,26 +116,29 @@ export const SCENARIOS: ReadonlyArray<Scenario> = [
   // History: 27 British ships of the line (3 first, 4 second, 20 third) vs 33
   // Franco-Spanish (4 first, 29 third). Light wind from the west. Nelson
   // attacked in TWO columns thrown at right angles into the long allied line to
-  // break it. Scaling: 27→10 British, 33→12 allied. British come on in two
-  // columns of five (Victory/Royal Sovereign at the heads); the Combined Fleet
-  // forms one long line they must break. Wind set ~due south so the British run
-  // down before it into the line (the historical downwind approach), the allied
-  // line lies beam-on.
+  // break it. Scaling: 27→10 British, 33→12 allied. The British muster in their
+  // two famous attack columns (Victory/Royal Sovereign at the heads) tucked into
+  // the bottom-left corner and run up to the north-east at the Combined Fleet,
+  // which forms one long, gently-curved crescent line of battle in the opposite
+  // (upper-right) corner — broadsides bearing down on the oncoming columns.
+  // Wind set from the south-west so the British attack runs broadly downwind into
+  // the line (the historical downwind approach).
   {
     id: "trafalgar",
     name: "Trafalgar",
     year: 1805,
     blurb:
       "Nelson hurls two columns at right angles into the long Franco-Spanish line to break it apart. Off Cape Trafalgar, the climactic fleet action of the age.",
-    windFromDegrees: 195,
+    windFromDegrees: 215,
     british: {
       label: "Royal Navy",
       formation: {
         // 1 first-rate flagship + 6 seventy-fours + 3 frigates, split into the
-        // two famous attack columns (round-robin keeps a heavy ship at each head).
+        // two famous attack columns (round-robin keeps a heavy ship at each head),
+        // anchored in the bottom-left corner and steering north-east at the line.
         ships: [F1, R3, R3, R3, R3, R3, R3, FR, FR, FR],
-        anchor: { x: 0, z: -H * 0.82 },
-        headingDeg: 0,
+        anchor: { x: -W * 0.76, z: -H * 0.66 },
+        headingDeg: 42,
         columns: 2,
         columnGap: 240,
       },
@@ -123,10 +147,13 @@ export const SCENARIOS: ReadonlyArray<Scenario> = [
       label: "Combined Fleet",
       formation: {
         // Two first-rates (Santísima Trinidad / a Spanish three-decker) amidships,
-        // eight 74s, two frigates — one long crescent-ish line of battle.
+        // eight 74s, two frigates — one long line of battle in the upper-right
+        // corner, bent into the slight crescent the allies actually formed (a
+        // gentle 22° bow over the twelve ships, not a tight hook).
         ships: [FR, R3, R3, R3, F1, R3, R3, F1, R3, R3, R3, FR],
-        anchor: { x: -W * 0.55, z: H * 0.46 },
-        headingDeg: 90,
+        anchor: { x: W * 0.62, z: H * 0.6 },
+        headingDeg: 270,
+        arcDeg: -22,
       },
     },
   },
@@ -352,6 +379,65 @@ export const SCENARIOS: ReadonlyArray<Scenario> = [
 /** Looks up a scenario by id (falls back to the first scenario). */
 export function getScenario(id: string): Scenario {
   return SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0];
+}
+
+/**
+ * Resolves a `FleetFormation` to concrete per-ship placements — the single
+ * source of truth shared by the live spawner (`Game.spawnFleet`) and the menu's
+ * mini starting-position diagram, so the chart card can never drift from where
+ * the ships actually start.
+ *
+ * Ships are placed bow-to-stern from the REAR `anchor` marching FORWARD along
+ * `headingDeg`; with `columns > 1` the list is split round-robin into that many
+ * parallel columns spaced `columnGap` abeam (the flagship — index 0 — leads
+ * column 0). Spacing within a column is cumulative from each ship's half-length
+ * plus `Config.ColumnGap`. An optional `arcDeg` bends each column into a gentle
+ * arc: the heading is rotated evenly across the gaps from the rear ship (base
+ * heading) to the front, and the march follows the mean heading of each gap — so
+ * with `arcDeg = 0` this reproduces the old straight cumulative spacing exactly.
+ */
+export function formationPositions(formation: FleetFormation): ShipPlacement[] {
+  const cols = Math.max(1, formation.columns ?? 1);
+  const columnGap = formation.columnGap ?? Config.ColumnGap + 8 * Config.ShipScale;
+  const right = headingToVector(formation.headingDeg + 90); // abeam (to starboard)
+  const arcDeg = formation.arcDeg ?? 0;
+
+  // Distribute ships round-robin across the columns so the flagship (index 0)
+  // and the next-heaviest ship head columns 0 and 1.
+  const columnLists: ShipClass[][] = Array.from({ length: cols }, () => []);
+  formation.ships.forEach((c, i) => columnLists[i % cols].push(c));
+
+  const out: ShipPlacement[] = [];
+  for (let ci = 0; ci < cols; ci++) {
+    const list = columnLists[ci];
+    const n = list.length;
+    if (n === 0) continue;
+    const lateral = (ci - (cols - 1) / 2) * columnGap;
+    const colAnchor = add(formation.anchor, scale(right, lateral));
+
+    const lengths = list.map((c) => shipStats(c).length);
+    // Per-ship bow heading: rear keeps the base heading, each ship forward turns
+    // by an equal share of `arcDeg` (zero share ⇒ every ship on the base heading).
+    const stepDelta = n > 1 ? arcDeg / (n - 1) : 0;
+    const headings = new Array<number>(n);
+    headings[n - 1] = formation.headingDeg;
+    for (let i = n - 2; i >= 0; i--) headings[i] = headings[i + 1] + stepDelta;
+
+    // March bow-to-stern from the rear anchor forward, advancing each inter-ship
+    // gap along the mean heading of the two ships it joins.
+    const positions = new Array<Vec2>(n);
+    positions[n - 1] = colAnchor;
+    for (let i = n - 2; i >= 0; i--) {
+      const gap = lengths[i + 1] * 0.5 + Config.ColumnGap + lengths[i] * 0.5;
+      const segHeading = (headings[i] + headings[i + 1]) * 0.5;
+      positions[i] = add(positions[i + 1], scale(headingToVector(segHeading), gap));
+    }
+
+    for (let i = 0; i < n; i++) {
+      out.push({ pos: positions[i], headingDeg: headings[i], shipClass: list[i] });
+    }
+  }
+  return out;
 }
 
 /** Human-readable fleet composition, e.g. "1 First Rate · 6 Third Rates · 3 Frigates". */
