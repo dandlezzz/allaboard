@@ -4,9 +4,9 @@
 // Rendering is delegated to the PixiJS Renderer + ShipView.
 
 import * as Config from "./config";
-import { Faction, ControlMode, accentColor, displayName } from "./faction";
+import { Faction, ControlMode, accentColor, displayName, enemyOf } from "./faction";
 import { normalize360, headingToVector, vectorToHeading, angleDifference } from "./nav";
-import { rangeFloat, seed } from "./rng";
+import { seed } from "./rng";
 import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
 import { Wind, pointOfSailColor } from "../combat/wind";
 import { CombatSystem } from "../combat/combatSystem";
@@ -17,7 +17,8 @@ import { Ship, ShipState } from "../ships/ship";
 import { ShipClass, shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
-import { buildSea } from "../rendering/scene";
+import { buildScene } from "../rendering/scene";
+import { type Scenario, type FleetFormation, SCENARIOS, getScenario } from "./scenarios";
 import type { Hud, Opponent } from "../ui/hud";
 import type { PointerSample } from "../board/input";
 import type { PauseMenu } from "../board/pauseMenu";
@@ -37,10 +38,16 @@ export enum GamePhase {
 /** The two sides that can take the field (used to iterate pads / fleets). */
 const PLAYABLE_FACTIONS: ReadonlyArray<Faction> = [Faction.British, Faction.FrancoSpanish];
 
-/** Centre of a faction's setup pad (see Config.SetupPad*). */
-function padPosition(faction: Faction): Vec2 {
+/** Fallback setup-pad centre (used until the scenario fleets place one). */
+function defaultPad(faction: Faction): Vec2 {
   const p = faction === Faction.British ? Config.SetupPadBritish : Config.SetupPadFrancoSpanish;
   return { x: p.x, z: p.z };
+}
+
+/** Clamps `v` into [lo, hi] (hi guarded ≥ lo). */
+function clampInto(v: number, lo: number, hi: number): number {
+  const top = Math.max(lo, hi);
+  return v < lo ? lo : v > top ? top : v;
 }
 
 /** Short label for an AI persona, shown on the opponent's setup pad. */
@@ -53,15 +60,6 @@ function personaName(persona: AIPersona): string {
     default:
       return "Standard";
   }
-}
-
-/**
- * Picks an INITIAL wind direction in the arc (45°, 315°) — i.e. always over 45°
- * and under 315°, the band that sweeps through due south (180°). The wind may
- * still veer freely afterward (see Wind.tick).
- */
-function initialWindFromDegrees(): number {
-  return normalize360(rangeFloat(45, 315));
 }
 
 function clamp01(x: number): number {
@@ -203,8 +201,19 @@ export class Game {
   private gameOverTimer = 0;
 
   // Currently-selected opponent persona, persisted across restarts (Rematch
-  // reuses it). The HUD persona buttons set this and start a fresh game.
+  // reuses it). The menu persona buttons set this and start a fresh game.
   private aiPersona: AIPersona = AIPersona.Standard;
+
+  // ---- Scenario (the chosen historical battle) --------------------------
+  // The scenario drives fleet composition, starting formations, fixed wind,
+  // per-side display labels, and any cosmetic coastline. Gameplay is otherwise
+  // identical across scenarios. Defaults to the first battle so the field is
+  // populated behind the opening menu; the menu replaces it via configureMatch.
+  private scenario: Scenario = SCENARIOS[0];
+  /** Which faction the (first) human player commands; the other is the AI/2P side. */
+  private playerFaction: Faction = Faction.British;
+  /** Per-scenario setup-pad centres, computed from each fleet's spawned centroid. */
+  private readonly padPos = new Map<Faction, Vec2>();
 
   // OS pause overlay (Board hardware menu button). Null in the browser preview;
   // on a Board it's set before `start()` so phase transitions can drive it.
@@ -223,16 +232,48 @@ export class Game {
 
   start(): void {
     seed(Math.floor(Math.random() * 0xffffffff));
-    buildSea(this.renderer.seaLayer);
 
-    this.wind = new Wind(initialWindFromDegrees());
-
+    // Default match (Royal Navy vs Standard AI on the first battle) so the sea is
+    // populated behind the opening scenario menu; confirming a battle in the menu
+    // replaces this via configureMatch().
+    this.scenario = SCENARIOS[0];
+    this.playerFaction = Faction.British;
     this.control.set(Faction.British, ControlMode.Human);
     this.control.set(Faction.FrancoSpanish, ControlMode.AI);
     this.ai.set(Faction.FrancoSpanish, new FleetAI(Faction.FrancoSpanish, this.aiPersona));
+    this.hud.setSideLabels(this.scenario.british.label, this.scenario.enemy.label);
 
-    this.hud.setOpponent(this.currentOpponent());
+    this.wind = new Wind(this.scenario.windFromDegrees);
     this.enterSetup();
+  }
+
+  /**
+   * Configures and starts a fresh match from a menu selection: which battle
+   * (scenario), which side the player commands, and the opponent (an AI persona
+   * or 2-player). Sets the control/AI machinery accordingly and restarts into
+   * the place-your-command-piece Setup phase. Reuses the existing per-faction
+   * control map, so the player may command EITHER side; the other becomes the
+   * AI (or the second human in 2-player).
+   */
+  configureMatch(scenarioId: string, playerFaction: Faction, opponent: Opponent): void {
+    this.scenario = getScenario(scenarioId);
+    this.playerFaction = playerFaction;
+    const enemy = enemyOf(playerFaction);
+
+    if (opponent === "human") {
+      this.control.set(playerFaction, ControlMode.Human);
+      this.control.set(enemy, ControlMode.Human);
+      this.ai.clear();
+    } else {
+      this.aiPersona = opponent;
+      this.control.set(playerFaction, ControlMode.Human);
+      this.control.set(enemy, ControlMode.AI);
+      this.ai.clear();
+      this.ai.set(enemy, new FleetAI(enemy, opponent));
+    }
+
+    this.hud.setSideLabels(this.scenario.british.label, this.scenario.enemy.label);
+    this.restart();
   }
 
   // ---- Frame loop --------------------------------------------------------
@@ -361,7 +402,7 @@ export class Game {
     const hitRadius = Config.SetupPadRadius * 1.6; // generous, forgiving target
     for (const faction of PLAYABLE_FACTIONS) {
       if (!this.needsPlacement(faction)) continue;
-      if (distance(world, padPosition(faction)) <= hitRadius) {
+      if (distance(world, this.padPosition(faction)) <= hitRadius) {
         this.placeCommandPiece(faction);
         return;
       }
@@ -392,7 +433,7 @@ export class Game {
   private placeCommandPiece(faction: Faction): void {
     this.placed.set(faction, true);
     this.control.set(faction, ControlMode.Human);
-    this.seedBaton(faction, padPosition(faction));
+    this.seedBaton(faction, this.padPosition(faction));
     if (this.allReady() && !this.countingDown) {
       this.countingDown = true;
       this.setupCountdown = Config.SetupCountdownSeconds;
@@ -836,67 +877,88 @@ export class Game {
     this.batonSteerRef.clear();
     this.batonHeld.clear();
 
-    // Both fleets start tucked into a BOTTOM corner of the arena (negative Z is
-    // the bottom of the screen — see Renderer.worldToScreen), drawn up in a
-    // line-ahead (bow-to-stern) column. Both share one straight heading — due
-    // "up" the board (0° = +Z, toward the top of the screen) — so the two
-    // columns are axis-aligned and parallel: British near the bottom-left,
-    // Franco-Spanish near the bottom-right. Players/AI steer them to engage.
-    const columnHeading = 0; // straight up (+Z), parallel for both fleets
-    this.spawnFleet(Faction.British, -1, columnHeading);
-    this.spawnFleet(Faction.FrancoSpanish, 1, columnHeading);
+    // (Re)build the sea + this scenario's cosmetic coastline beneath the fleets.
+    buildScene(this.renderer.seaLayer, this.scenario.land);
+
+    // Place both fleets from the chosen scenario's formations, then derive each
+    // side's setup pad from where its ships actually ended up.
+    this.spawnFleet(Faction.British, this.scenario.british.formation);
+    this.spawnFleet(Faction.FrancoSpanish, this.scenario.enemy.formation);
+    this.computePads();
   }
 
   /**
-   * Spawns a fleet as a single line-ahead column anchored in a bottom corner.
-   *
-   * `cornerSignX` picks the corner: -1 = bottom-left, +1 = bottom-right. The
-   * anchor (inset from the true corner so the rear-most hull stays on-screen) is
-   * the REAR of the column; ships march FORWARD from it along `headingDeg`, so
-   * the flagship (index 0) ends up leading and every ship shares one heading,
-   * reading bow-to-stern. Spacing is cumulative from each ship's half-length plus
-   * `ColumnGap`, so neighbours never overlap regardless of the class mix.
+   * Spawns a fleet from a scenario FleetFormation. Ships are placed bow-to-stern
+   * from the REAR `anchor` marching FORWARD along `headingDeg`; with `columns > 1`
+   * the ship list is split round-robin into that many parallel columns spaced
+   * `columnGap` abeam (so a heavy ship leads each column). Spacing within a column
+   * is cumulative from each ship's half-length plus `ColumnGap`, so neighbours
+   * never overlap regardless of the class mix. This one primitive expresses a
+   * single line-ahead, a long battle line, or Nelson's two attack columns alike.
    */
-  private spawnFleet(faction: Faction, cornerSignX: number, headingDeg: number): void {
-    // Eight ships per fleet: a flagship, four 74s, and three frigates.
-    const line: ShipClass[] = [
-      ShipClass.FirstRate,
-      ShipClass.ThirdRate,
-      ShipClass.ThirdRate,
-      ShipClass.ThirdRate,
-      ShipClass.ThirdRate,
-      ShipClass.Frigate,
-      ShipClass.Frigate,
-      ShipClass.Frigate,
-    ];
+  private spawnFleet(faction: Faction, formation: FleetFormation): void {
+    const cols = Math.max(1, formation.columns ?? 1);
+    const columnGap = formation.columnGap ?? Config.ColumnGap + 8 * Config.ShipScale;
+    const forward = headingToVector(formation.headingDeg); // bow direction / column axis
+    const right = headingToVector(formation.headingDeg + 90); // abeam (to starboard)
 
-    // Rear anchor in the bottom corner, kept a margin inside the arena bounds so
-    // even the rear ship's stern stays on-screen.
-    const marginX = 18 * Config.ShipScale;
-    const marginZ = 10 * Config.ShipScale;
-    const anchor: Vec2 = {
-      x: cornerSignX * (Config.ArenaHalfX - marginX),
-      z: -(Config.ArenaHalfZ - marginZ),
-    };
+    // Distribute ships round-robin across the columns so the flagship (index 0)
+    // and the next-heaviest ship head columns 0 and 1.
+    const columnLists: ShipClass[][] = Array.from({ length: cols }, () => []);
+    formation.ships.forEach((c, i) => columnLists[i % cols].push(c));
 
-    const forward = headingToVector(headingDeg); // column axis (bow direction)
-    const lengths = line.map((c) => shipStats(c).length);
+    for (let ci = 0; ci < cols; ci++) {
+      const list = columnLists[ci];
+      if (list.length === 0) continue;
+      const lateral = (ci - (cols - 1) / 2) * columnGap;
+      const colAnchor = add(formation.anchor, scale(right, lateral));
 
-    // Distance of each ship FORWARD from the rear anchor. The rear-most ship
-    // (last index) sits at the anchor; each step forward adds the two half-lengths
-    // plus the gap so hulls clear each other.
-    const distFromRear = new Array<number>(line.length);
-    distFromRear[line.length - 1] = 0;
-    for (let i = line.length - 2; i >= 0; i--) {
-      distFromRear[i] =
-        distFromRear[i + 1] + lengths[i + 1] * 0.5 + Config.ColumnGap + lengths[i] * 0.5;
+      const lengths = list.map((c) => shipStats(c).length);
+      const distFromRear = new Array<number>(list.length);
+      distFromRear[list.length - 1] = 0;
+      for (let i = list.length - 2; i >= 0; i--) {
+        distFromRear[i] =
+          distFromRear[i + 1] + lengths[i + 1] * 0.5 + Config.ColumnGap + lengths[i] * 0.5;
+      }
+
+      for (let i = 0; i < list.length; i++) {
+        const pos = add(colAnchor, scale(forward, distFromRear[i]));
+        const ship = new Ship(shipStats(list[i]), faction, pos, formation.headingDeg);
+        new ShipView(ship, this.renderer);
+        this.ships.push(ship);
+      }
     }
+  }
 
-    for (let i = 0; i < line.length; i++) {
-      const pos = add(anchor, scale(forward, distFromRear[i]));
-      const ship = new Ship(shipStats(line[i]), faction, pos, headingDeg);
-      new ShipView(ship, this.renderer);
-      this.ships.push(ship);
+  /**
+   * Derives each side's setup pad from the centroid of its spawned fleet (clamped
+   * into the arena safe area), so the command piece is dropped amid that side's
+   * ships and the baton's sphere of influence captures a squadron at its centre —
+   * whatever formation/anchor the scenario used.
+   */
+  private computePads(): void {
+    this.padPos.clear();
+    const safe = 1 - Config.ArenaSafeInset;
+    const maxX = Config.ArenaHalfX * safe - Config.SetupPadRadius;
+    const maxZ = Config.ArenaHalfZ * safe - Config.SetupPadRadius;
+    for (const faction of PLAYABLE_FACTIONS) {
+      const fleet = this.ships.filter((s) => s.faction === faction);
+      if (fleet.length === 0) {
+        this.padPos.set(faction, defaultPad(faction));
+        continue;
+      }
+      let cx = 0;
+      let cz = 0;
+      for (const s of fleet) {
+        cx += s.position.x;
+        cz += s.position.z;
+      }
+      cx /= fleet.length;
+      cz /= fleet.length;
+      this.padPos.set(faction, {
+        x: clampInto(cx, -maxX, maxX),
+        z: clampInto(cz, -maxZ, maxZ),
+      });
     }
   }
 
@@ -1033,9 +1095,10 @@ export class Game {
         : Faction.Neutral;
   }
 
-  /** Rematch: a new match always begins back in Setup (re-require placement). */
+  /** Rematch: a fresh match of the SAME scenario, back in Setup (re-place pieces),
+   *  with the scenario's fixed wind reset. */
   restart(): void {
-    this.wind = new Wind(initialWindFromDegrees());
+    this.wind = new Wind(this.scenario.windFromDegrees);
     this.enterSetup();
   }
 
@@ -1124,10 +1187,10 @@ export class Game {
           ? "✓ In command"
           : "Place your command piece";
       return {
-        pos: padPosition(faction),
+        pos: this.padPosition(faction),
         radius: Config.SetupPadRadius,
         color: accentColor(faction),
-        title: displayName(faction),
+        title: this.sideLabel(faction),
         subtitle,
         ready,
       };
@@ -1140,7 +1203,9 @@ export class Game {
     if (this.countingDown) {
       return `All hands on deck — battle stations in ${Math.ceil(this.setupCountdown)}…`;
     }
-    const waiting = PLAYABLE_FACTIONS.filter((f) => this.needsPlacement(f)).map(displayName);
+    const waiting = PLAYABLE_FACTIONS.filter((f) => this.needsPlacement(f)).map((f) =>
+      this.sideLabel(f),
+    );
     if (waiting.length === 0) return "Standing by…";
     if (waiting.length === 1) {
       return `Place ${waiting[0]}'s command piece to begin`;
@@ -1148,33 +1213,16 @@ export class Game {
     return `Waiting for ${waiting.join(" & ")} to place their command pieces`;
   }
 
-  /** The opponent currently selected on the start screen. */
-  private currentOpponent(): Opponent {
-    return this.isHuman(Faction.FrancoSpanish) ? "human" : this.aiPersona;
+  /** A faction's setup-pad centre for this scenario (fleet centroid, clamped). */
+  private padPosition(faction: Faction): Vec2 {
+    return this.padPos.get(faction) ?? defaultPad(faction);
   }
 
-  /**
-   * Picks the "2 Players" option: the Franco-Spanish fleet becomes human-
-   * controlled and the match restarts into Setup so BOTH captains must place a
-   * command piece before the battle begins.
-   */
-  selectVsHuman(): void {
-    this.control.set(Faction.FrancoSpanish, ControlMode.Human);
-    this.hud.setOpponent("human");
-    this.restart();
-  }
-
-  /**
-   * Selects the opponent persona (persisted so Rematch reuses it), puts the
-   * Franco-Spanish fleet under AI control, and restarts into Setup so the player
-   * re-places their command piece against the chosen brain.
-   */
-  selectPersona(persona: AIPersona): void {
-    this.aiPersona = persona;
-    this.control.set(Faction.FrancoSpanish, ControlMode.AI);
-    this.ai.set(Faction.FrancoSpanish, new FleetAI(Faction.FrancoSpanish, persona));
-    this.hud.setOpponent(persona);
-    this.restart();
+  /** Scenario display label for a side (e.g. "Royal Navy" / "Combined Fleet"). */
+  private sideLabel(faction: Faction): string {
+    if (faction === Faction.British) return this.scenario.british.label;
+    if (faction === Faction.FrancoSpanish) return this.scenario.enemy.label;
+    return displayName(faction);
   }
 
   private isHuman(faction: Faction): boolean {

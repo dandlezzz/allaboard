@@ -13,6 +13,7 @@
 
 import { Renderer } from "./rendering/renderer";
 import { Hud } from "./ui/hud";
+import { Menu } from "./ui/menu";
 import { Game } from "./core/game";
 import { createInputAdapter } from "./board/input";
 import { loadBoard } from "./board/sdk";
@@ -34,14 +35,17 @@ async function main(): Promise<void> {
   // the procedural ShipView art).
   await preloadArt();
 
-  // HUD callbacks need the Game and the Game needs the HUD, so the closures
-  // below capture `game`, which is assigned immediately after construction.
+  // HUD / Menu callbacks need the Game and the Game needs the HUD, so the
+  // closures below capture `game`, which is assigned immediately after
+  // construction.
   let game: Game;
-  const hud = new Hud(
-    (persona) => game.selectPersona(persona),
-    () => game.selectVsHuman(),
-    () => game.restart(),
-  );
+  const hud = new Hud(() => game.restart());
+  // The antique-chart menu drives scenario / side / opponent selection; it sits
+  // on top of the live canvas and starts a match via configureMatch.
+  const menu = new Menu({
+    onBegin: (scenarioId, playerFaction, opponent) =>
+      game.configureMatch(scenarioId, playerFaction, opponent),
+  });
   game = new Game(renderer, hud, onDevice);
 
   // Wire the OS pause overlay (Board hardware menu button). The PauseMenu is a
@@ -55,6 +59,11 @@ async function main(): Promise<void> {
   );
 
   game.start();
+
+  // Open the scenario menu over the freshly-spawned default match; the player
+  // must choose a battle to begin (the menu is dismissible only after the first
+  // match starts, via its ✕ / the corner Battles button).
+  menu.open();
 
   const disposeInput = await createInputAdapter(canvas, (samples) =>
     game.onPointerSamples(samples),

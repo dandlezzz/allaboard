@@ -127,38 +127,169 @@ body.show-banner #banner {
   opacity: 1;
 }
 
-/* ===== "Broadsides" start screen (shown during the Setup phase) ===========
- * A FULL-SCREEN, full-bleed cover carrying the title, the opponent selector, and
- * the live placement status. The overlay itself is click-through
- * (`pointer-events: none`) so the command pads drawn at the bottom corners of the
- * canvas stay tappable for piece placement; only the opponent cards re-enable
- * pointer events. The background gradient fades toward the bottom so the pads
- * remain clearly visible within the full-screen layout. */
-#setup-overlay {
+/* ===========================================================================
+ * ANTIQUE NAUTICAL-CHART MENU SKIN
+ * The menus (scenario select, side/opponent select, how-to modal, corner chrome)
+ * evoke a hand-coloured engraved battle chart: aged parchment, sepia ink, a
+ * double-ruled border frame, an engraved serif display face, a compass rose, and
+ * a colour legend. The in-BATTLE canvas + HUD readouts are left untouched.
+ * Palette tokens: */
+:root {
+  --ink: #3a2c1a; /* engraved sepia ink */
+  --ink-soft: #6b5536;
+  --rule: #5a4327; /* border-rule brown */
+  --rule-soft: #8a7546;
+  --parchment-1: #f3e7c6;
+  --parchment-2: #e7d4ac;
+  --parchment-3: #dcc794;
+  --card: #efe2c4; /* card paper, a touch lighter */
+  --british: #2f63b8; /* legend swatch — Royal Navy blue */
+  --enemy: #cf7a2a; /* legend swatch — enemy orange */
+}
+
+/* The aged-paper field used by every menu surface (layered gradients give a
+ * mottled, sun-faded parchment without any image asset). */
+.parchment {
+  background-color: var(--parchment-2);
+  background-image:
+    radial-gradient(120% 90% at 50% -10%, rgba(255, 250, 232, 0.9), rgba(255, 250, 232, 0) 60%),
+    radial-gradient(70% 60% at 12% 18%, rgba(150, 120, 70, 0.16), rgba(150, 120, 70, 0) 60%),
+    radial-gradient(75% 65% at 88% 86%, rgba(120, 92, 50, 0.2), rgba(120, 92, 50, 0) 60%),
+    radial-gradient(60% 50% at 80% 10%, rgba(120, 92, 50, 0.12), rgba(120, 92, 50, 0) 55%),
+    linear-gradient(180deg, var(--parchment-1), var(--parchment-3));
+}
+
+.section-label {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(11px, 1.5vh, 15px);
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* Engraved serif display face for chart titles. */
+.chart-title {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", "Hoefler Text", serif;
+  font-weight: 700;
+  font-size: clamp(34px, 7vh, 72px);
+  letter-spacing: 3px;
+  line-height: 1.02;
+  color: var(--ink);
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(255, 252, 240, 0.6);
+}
+
+.chart-subtitle {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: clamp(13px, 2vh, 20px);
+  letter-spacing: 1px;
+  color: var(--ink-soft);
+}
+
+.chart-blurb {
+  max-width: 60ch;
+  margin: 0 auto;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(13px, 1.8vh, 17px);
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+/* ===== MENU root + double-ruled chart frame ============================== */
+#menu {
   position: fixed;
   inset: 0;
+  z-index: 30;
+  display: flex;
+  padding: clamp(10px, 2.4vh, 26px);
+  pointer-events: auto;
+}
+
+#menu[hidden] {
   display: none;
+}
+
+.chart-frame {
+  position: relative;
+  flex: 1;
+  display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 6vh 24px 22px;
+  gap: clamp(8px, 1.6vh, 16px);
+  overflow-y: auto;
+  padding: clamp(18px, 4vh, 44px) clamp(18px, 4vw, 56px);
   text-align: center;
+  color: var(--ink);
+  /* double-ruled border: a thick outer rule + a thin inner rule (box-shadow). */
+  border: 3px solid var(--rule);
+  outline: 1px solid var(--rule);
+  outline-offset: 6px;
+  box-shadow:
+    inset 0 0 0 2px var(--parchment-1),
+    inset 0 0 0 3px var(--rule-soft),
+    0 18px 50px rgba(20, 12, 4, 0.45);
+  background-color: var(--parchment-2);
+  background-image:
+    radial-gradient(120% 90% at 50% -10%, rgba(255, 250, 232, 0.9), rgba(255, 250, 232, 0) 60%),
+    radial-gradient(70% 60% at 12% 18%, rgba(150, 120, 70, 0.16), rgba(150, 120, 70, 0) 60%),
+    radial-gradient(75% 65% at 88% 86%, rgba(120, 92, 50, 0.2), rgba(120, 92, 50, 0) 60%),
+    linear-gradient(180deg, var(--parchment-1), var(--parchment-3));
+}
+
+.compass-rose {
+  position: absolute;
+  top: clamp(8px, 1.6vh, 18px);
+  left: clamp(8px, 1.6vw, 20px);
+  width: clamp(48px, 7vh, 84px);
+  height: clamp(48px, 7vh, 84px);
+  opacity: 0.7;
   pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(4, 12, 20, 0.94) 0%,
-    rgba(5, 15, 24, 0.86) 34%,
-    rgba(6, 16, 25, 0.42) 66%,
-    rgba(6, 16, 25, 0.06) 100%
-  );
 }
 
-body.phase-setup #setup-overlay {
+.chart-x {
+  position: absolute;
+  top: clamp(8px, 1.6vh, 16px);
+  right: clamp(10px, 1.6vw, 20px);
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--rule);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.menu-screen {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 1.6vh, 16px);
+  width: 100%;
+  max-width: 1180px;
 }
 
-/* Keep the start screen uncluttered: hide the in-battle HUD chrome while the
- * players choose an opponent and place their command pieces. */
+.menu-screen[hidden] {
+  display: none;
+}
+
+/* Hide the in-battle HUD chrome + dev controls + Battles button while the menu
+ * is open (the chart fully covers the field). */
+body.menu-open #hint,
+body.menu-open #wind-indicator,
+body.menu-open .fleet-status,
+body.menu-open #setup-status,
+body.menu-open #dev-controls,
+body.menu-open #battles-toggle {
+  display: none;
+}
+
+/* Keep the start/setup screen uncluttered: hide in-battle HUD chrome while
+ * players place their command pieces on the canvas. */
 body.phase-setup #hint,
 body.phase-setup #wind-indicator,
 body.phase-setup .fleet-status,
@@ -166,56 +297,427 @@ body.phase-setup #dev-controls {
   display: none;
 }
 
-#game-title {
-  font-size: clamp(44px, 9vh, 92px);
-  font-weight: 900;
-  letter-spacing: 4px;
+/* ===== Screen 1: scenario gallery (chart cards) ========================== */
+.scenario-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: clamp(10px, 1.8vh, 20px);
+  width: 100%;
+  max-width: 1120px;
+  margin-top: clamp(4px, 1vh, 12px);
+}
+
+.chart-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: clamp(12px, 1.8vh, 18px);
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  box-shadow:
+    inset 0 0 0 1px var(--parchment-1),
+    0 6px 16px rgba(30, 18, 6, 0.28);
+  transition:
+    transform 90ms ease,
+    box-shadow 140ms ease;
+}
+
+.chart-card:hover,
+.chart-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 1px var(--parchment-1),
+    0 0 0 2px var(--rule-soft),
+    0 12px 26px rgba(30, 18, 6, 0.36);
+  outline: none;
+}
+
+.chart-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--rule-soft);
+  padding-bottom: 4px;
+}
+
+.chart-card-name {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  font-size: clamp(18px, 2.4vh, 24px);
+  letter-spacing: 1px;
+}
+
+.chart-card-year {
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: clamp(12px, 1.6vh, 16px);
+  color: var(--ink-soft);
+}
+
+.chart-card-glyph {
+  display: block;
+  width: 84px;
+  height: 40px;
+  margin: 2px auto;
+  opacity: 0.85;
+}
+
+.chart-card-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(11px, 1.5vh, 14px);
+  color: var(--ink);
+}
+
+.legend-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+
+.swatch.big {
+  width: 22px;
+  height: 22px;
+}
+
+.chart-card-blurb {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(11px, 1.5vh, 14px);
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+/* ===== Screen 2: side + opponent selection ============================== */
+.side-select {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(10px, 1.6vh, 18px);
+  width: 100%;
+}
+
+.side-select.muted {
+  opacity: 0.5;
+}
+
+.side-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 240px;
+  max-width: 320px;
+  padding: clamp(12px, 1.8vh, 18px);
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--parchment-1);
+  transition:
+    transform 80ms ease,
+    box-shadow 140ms ease;
+}
+
+.side-card .side-name {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  font-size: clamp(18px, 2.4vh, 24px);
+  letter-spacing: 1px;
+}
+
+.side-card .side-fleet {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(11px, 1.5vh, 14px);
+  color: var(--ink-soft);
+}
+
+.side-card.active {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 1px var(--parchment-1),
+    0 0 0 3px var(--rule),
+    0 10px 22px rgba(30, 18, 6, 0.34);
+}
+
+/* Opponent buttons (re-skinned to parchment). */
+#opponent-select {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(8px, 1.4vh, 14px);
+  width: 100%;
+}
+
+.opponent-btn {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1 1 160px;
+  max-width: 210px;
+  min-height: 76px;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: center;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--parchment-1);
+  transition:
+    transform 80ms ease,
+    box-shadow 140ms ease;
+}
+
+.opponent-btn:active,
+.side-card:active,
+.chart-card:active {
+  transform: translateY(1px);
+}
+
+.opponent-btn .opp-name {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(15px, 2.1vh, 20px);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.opponent-btn .opp-desc {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(10px, 1.4vh, 13px);
+  color: var(--ink-soft);
+}
+
+.opponent-btn.active {
+  box-shadow:
+    inset 0 0 0 1px var(--parchment-1),
+    0 0 0 3px var(--rule),
+    0 8px 18px rgba(30, 18, 6, 0.3);
+}
+
+/* Primary "Begin" button + the "Back" text link. */
+.chart-btn {
+  appearance: none;
+  margin-top: clamp(6px, 1.4vh, 14px);
+  padding: 12px 28px;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(16px, 2.2vh, 21px);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--parchment-1);
+  background: var(--rule);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  box-shadow: 0 6px 16px rgba(30, 18, 6, 0.36);
+}
+
+.chart-btn:active {
+  transform: translateY(1px);
+}
+
+.chart-link {
+  align-self: flex-start;
+  appearance: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(13px, 1.7vh, 16px);
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+}
+
+.chart-link:hover {
+  color: var(--ink);
+}
+
+/* ===== In-canvas placement prompt (Setup phase, menu closed) ============= */
+#setup-status {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 8px 22px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(15px, 2.2vh, 21px);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: 0 6px 16px rgba(30, 18, 6, 0.3);
+  display: none;
+}
+
+body.phase-setup #setup-status {
+  display: block;
+}
+
+/* ===== Persistent corner chrome (parchment) ============================= */
+.corner-btn {
+  position: fixed;
+  z-index: 35;
+  appearance: none;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: 0 6px 16px rgba(30, 18, 6, 0.3);
+}
+
+.corner-btn:active {
+  transform: translateY(1px);
+}
+
+#battles-toggle {
+  top: 16px;
+  right: 16px;
+  min-height: 44px;
+  padding: 8px 16px;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+}
+
+#howto-toggle.round {
+  bottom: 16px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  font-size: 24px;
+}
+
+/* In-game Rematch button — small, top-left. Hidden during Setup / menu. */
+#dev-controls {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+}
+
+#dev-controls button {
+  appearance: none;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: 0 6px 16px rgba(30, 18, 6, 0.3);
+}
+
+#dev-controls button:active {
+  transform: translateY(1px);
+}
+
+/* ===== How-to-play modal (toggled any time by the corner "?" button) ===== */
+#howto-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 3vh, 30px);
+  background: rgba(26, 16, 6, 0.55);
+  /* Re-enable input: this modal lives inside the click-through #hud. */
+  pointer-events: auto;
+}
+
+#howto-overlay[hidden] {
+  display: none;
+}
+
+#howto-panel {
+  position: relative;
+  width: 100%;
+  max-width: 1180px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: clamp(18px, 3vh, 34px);
+  border: 3px solid var(--rule);
+  outline: 1px solid var(--rule);
+  outline-offset: 5px;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 0 0 2px var(--parchment-1),
+    inset 0 0 0 3px var(--rule-soft),
+    0 18px 50px rgba(20, 12, 4, 0.5);
+  background-color: var(--parchment-2);
+  background-image:
+    radial-gradient(120% 90% at 50% -10%, rgba(255, 250, 232, 0.9), rgba(255, 250, 232, 0) 60%),
+    linear-gradient(180deg, var(--parchment-1), var(--parchment-3));
+}
+
+#howto-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--rule);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 24px;
   line-height: 1;
-  background: linear-gradient(180deg, #ffe9a8 0%, #f5c451 55%, #c9942b 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
 }
 
-#game-subtitle {
-  margin-top: 2px;
-  font-size: clamp(13px, 2.2vh, 20px);
+.howto-heading {
+  margin-bottom: clamp(8px, 1.6vh, 16px);
+  text-align: center;
+  font-family: Georgia, "Times New Roman", serif;
   font-weight: 700;
-  letter-spacing: 6px;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.66);
-}
-
-.section-label {
-  font-size: clamp(12px, 1.7vh, 16px);
-  font-weight: 700;
+  font-size: clamp(22px, 3.4vh, 36px);
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
 }
 
-#opponent-label {
-  margin-top: 12px;
-}
-
-/* Illustrated "How to play" guide — six cards (inline-SVG art + title +
- * caption) laid out as a 3×2 grid so every card is visible at once with NO
- * scrolling (the Board console is large enough to show them all). The grid is
- * `pointer-events: auto` so the cards stay interactive; it sits in the middle
- * band of the full-screen start screen, clear of the command pads at the bottom
- * corners. The card art is drawn inline (SVG) to faithfully mirror the real
- * in-game controls and palette, so it scales crisply and needs no image assets. */
+/* The six illustrated cards: in a 3×2 grid, framed as engraved plates on the
+ * parchment. The card ART (inline SVG) keeps its in-game dark palette so it
+ * mirrors the real controls; only the surrounding plate is re-skinned. */
 #howto {
-  pointer-events: auto;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: clamp(8px, 1.4vh, 16px);
-  align-items: stretch;
-  justify-items: stretch;
+  gap: clamp(10px, 1.6vh, 18px);
   width: 100%;
-  max-width: min(1120px, 94vw);
-  padding: 2px 6px;
 }
 
 .howto-card {
@@ -223,11 +725,11 @@ body.phase-setup #dev-controls {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: clamp(7px, 1vh, 11px);
-  border-radius: 12px;
-  background: rgba(12, 28, 42, 0.66);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  padding: clamp(8px, 1.1vh, 12px);
+  border-radius: 3px;
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  box-shadow: inset 0 0 0 1px var(--parchment-1);
 }
 
 .howto-art {
@@ -235,8 +737,9 @@ body.phase-setup #dev-controls {
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 9;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  border: 1px solid var(--rule-soft);
+  background: #0b1a28;
 }
 
 .howto-card figcaption {
@@ -247,123 +750,21 @@ body.phase-setup #dev-controls {
 }
 
 .howto-title {
+  font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(15px, 1.9vh, 18px);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.3px;
+  color: var(--ink);
 }
 
 .howto-caption {
+  font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(11px, 1.5vh, 13px);
-  font-weight: 600;
   line-height: 1.3;
-  color: rgba(255, 255, 255, 0.66);
+  color: var(--ink-soft);
 }
 
-#opponent-select {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-}
-
-.opponent-btn {
-  appearance: none;
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  flex: 1 1 170px;
-  max-width: 200px;
-  min-height: 84px;
-  padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 12px;
-  background: rgba(12, 28, 42, 0.7);
-  color: #ffffff;
-  font: inherit;
-  line-height: 1.2;
-  cursor: pointer;
-  text-align: center;
-  transition:
-    transform 80ms ease,
-    background 120ms ease,
-    border-color 120ms ease;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
-}
-
-.opponent-btn:active {
-  transform: translateY(1px);
-}
-
-.opponent-btn .opp-name {
-  font-size: clamp(17px, 2.4vh, 22px);
-  font-weight: 800;
-  letter-spacing: 0.5px;
-}
-
-.opponent-btn .opp-desc {
-  font-size: clamp(11px, 1.5vh, 13px);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.62);
-}
-
-/* Highlight the currently-selected opponent. */
-.opponent-btn.active {
-  background: rgba(40, 96, 140, 0.95);
-  border-color: #9fd2ff;
-  box-shadow:
-    0 0 0 2px #9fd2ff,
-    0 10px 26px rgba(0, 0, 0, 0.3);
-}
-
-.opponent-btn.active .opp-desc {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-#setup-status {
-  margin-top: auto;
-  margin-bottom: 2vh;
-  font-size: clamp(16px, 2.4vh, 22px);
-  font-weight: 700;
-  color: #ffe08a;
-}
-
-/* In-game Rematch button — small, top-right, away from the Board's bottom
- * system controls. Hidden during Setup (the start screen drives restarts). */
-#dev-controls {
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  z-index: 2;
-  display: flex;
-  gap: 8px;
-}
-
-#dev-controls button {
-  appearance: none;
-  min-width: 96px;
-  min-height: 44px;
-  padding: 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
-  background: rgba(7, 18, 28, 0.64);
-  color: #ffffff;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 750;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
-}
-
-#dev-controls button:active {
-  transform: translateY(1px);
-}
-
-@media (max-width: 700px) {
+@media (max-width: 820px) {
   #hint {
     font-size: 12px;
     bottom: 10px;
@@ -374,20 +775,7 @@ body.phase-setup #dev-controls {
     font-size: 13px;
   }
 
-  #setup-overlay {
-    padding: 4vh 16px 16px;
-    gap: 10px;
-  }
-
-  /* Narrow browser windows: drop the how-to grid to two columns so the cards
-   * stay legible (still no scrolling — the grid just grows taller). */
   #howto {
     grid-template-columns: repeat(2, 1fr);
-    max-width: 96vw;
-  }
-
-  .opponent-btn {
-    flex-basis: 132px;
-    min-height: 72px;
   }
 }

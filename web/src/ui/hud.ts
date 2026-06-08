@@ -1,7 +1,8 @@
 // Heads-up display — a DOM port of Unity `UI/HudController.cs`. Drives the wind
-// indicator, per-side fleet status, the control hint, the win banner, AND the
-// "Broadsides" start screen (opponent selector + placement status) shown during
-// the Setup phase. The in-game Rematch button is wired here too.
+// indicator, per-side fleet status, the win banner, and the in-canvas placement
+// prompt shown during the Setup phase. The opponent / scenario selection now
+// lives in the antique-chart MENU (see ui/menu.ts); the HUD only renders the
+// live battle chrome. The in-game Rematch button is wired here too.
 
 import { Faction, accentCss, displayName } from "../core/faction";
 import { normalize360 } from "../core/nav";
@@ -28,43 +29,34 @@ export class Hud {
   private readonly setupStatus = el("setup-status");
   private readonly resetButton = el<HTMLButtonElement>("reset-button");
 
-  // Start-screen opponent selector: the three AI personas + a 2-player option.
-  // Picking one starts a fresh match vs that opponent; the active one is lit.
-  private readonly opponentButtons: ReadonlyArray<{ key: Opponent; button: HTMLButtonElement }> = [
-    { key: AIPersona.Standard, button: el<HTMLButtonElement>("persona-standard") },
-    { key: AIPersona.Turtle, button: el<HTMLButtonElement>("persona-turtle") },
-    { key: AIPersona.Tactician, button: el<HTMLButtonElement>("persona-giga") },
-    { key: "human", button: el<HTMLButtonElement>("opponent-human") },
-  ];
+  // Per-scenario display labels for the two factions (e.g. "Royal Navy" vs
+  // "Combined Fleet" / "U.S. Navy"). Defaults to the generic faction names.
+  private britishLabel = displayName(Faction.British);
+  private francoLabel = displayName(Faction.FrancoSpanish);
 
-  constructor(
-    onSelectPersona: (persona: AIPersona) => void,
-    onSelectVsHuman: () => void,
-    onReset: () => void,
-  ) {
+  constructor(onReset: () => void) {
     this.fleetBritish.style.color = accentCss(Faction.British);
     this.fleetFranco.style.color = accentCss(Faction.FrancoSpanish);
     this.resetButton.addEventListener("click", onReset);
-    for (const { key, button } of this.opponentButtons) {
-      button.addEventListener("click", () => {
-        if (key === "human") onSelectVsHuman();
-        else onSelectPersona(key);
-      });
-    }
   }
 
-  /** Highlights the currently-selected opponent (an AI persona or "human"). */
-  setOpponent(active: Opponent): void {
-    for (const entry of this.opponentButtons) {
-      entry.button.classList.toggle("active", entry.key === active);
-    }
+  /** Sets the two sides' scenario display labels (fleet panels + win banner). */
+  setSideLabels(britishLabel: string, francoLabel: string): void {
+    this.britishLabel = britishLabel;
+    this.francoLabel = francoLabel;
+  }
+
+  private labelFor(faction: Faction): string {
+    if (faction === Faction.British) return this.britishLabel;
+    if (faction === Faction.FrancoSpanish) return this.francoLabel;
+    return displayName(faction);
   }
 
   /**
-   * Shows/hides the start screen (Setup phase) and sets its status line.
-   * Toggling `body.phase-setup` lets the stylesheet reveal the start overlay and
-   * hide in-battle chrome (wind/fleet panels, control hint) while players choose
-   * an opponent and place their command pieces.
+   * Shows/hides the in-canvas placement prompt (Setup phase) and sets its text.
+   * Toggling `body.phase-setup` lets the stylesheet reveal the placement status
+   * and hide in-battle chrome (wind/fleet panels) while players place their
+   * command pieces.
    */
   setSetupOverlay(active: boolean, status: string): void {
     document.body.classList.toggle("phase-setup", active);
@@ -78,7 +70,7 @@ export class Hud {
 
     if (gameOver) {
       this.banner.textContent =
-        winner === Faction.Neutral ? "STALEMATE" : `${displayName(winner)} Fleet Victorious!`;
+        winner === Faction.Neutral ? "STALEMATE" : `${this.labelFor(winner)} Victorious!`;
       this.banner.style.color = winner === Faction.Neutral ? "#ffffff" : accentCss(winner);
       document.body.classList.add("show-banner");
     } else {
@@ -105,6 +97,6 @@ export class Hud {
       }
     }
     const avgHull = afloat > 0 ? (totalHull / afloat) * 100 : 0;
-    node.innerHTML = `<b>${displayName(faction)}</b><br>Ships: ${afloat} &nbsp; Avg hull: ${roundToInt(avgHull)}%`;
+    node.innerHTML = `<b>${this.labelFor(faction)}</b><br>Ships: ${afloat} &nbsp; Avg hull: ${roundToInt(avgHull)}%`;
   }
 }
