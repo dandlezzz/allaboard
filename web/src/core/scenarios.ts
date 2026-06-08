@@ -114,46 +114,49 @@ export interface Scenario {
 export const SCENARIOS: ReadonlyArray<Scenario> = [
   // === TRAFALGAR (1805) =====================================================
   // History: 27 British ships of the line (3 first, 4 second, 20 third) vs 33
-  // Franco-Spanish (4 first, 29 third). Light wind from the west. Nelson
-  // attacked in TWO columns thrown at right angles into the long allied line to
-  // break it. Scaling: 27→10 British, 33→12 allied. The British muster in their
-  // two famous attack columns (Victory/Royal Sovereign at the heads) tucked into
-  // the bottom-left corner and run up to the north-east at the Combined Fleet,
-  // which forms one long, gently-curved crescent line of battle in the opposite
-  // (upper-right) corner — broadsides bearing down on the oncoming columns.
-  // Wind set from the south-west so the British attack runs broadly downwind into
-  // the line (the historical downwind approach).
+  // Franco-Spanish (4 first, 29 third). Nelson attacked in TWO columns sailing
+  // down before a WNW wind from the WEST, straight at the long allied line to
+  // break it. Scaling: 27→10 British, 33→12 allied. Laid out to the historical
+  // noon-21-Oct chart (north up, +X = east): the British bear down from the WEST
+  // in their two famous attack columns — Nelson's weather column (Victory) to
+  // the north, Collingwood's lee column (Royal Sovereign) to the south — steering
+  // due east at mid-height. The Combined Fleet lies in one long near-north–south
+  // line down the EAST side, bent into the shallow crescent it actually formed,
+  // bowing WEST (concave toward the oncoming British), spanning the field's full
+  // height. Wind from the WNW so the British run down before it into the line.
   {
     id: "trafalgar",
     name: "Trafalgar",
     year: 1805,
     blurb:
       "Nelson hurls two columns at right angles into the long Franco-Spanish line to break it apart. Off Cape Trafalgar, the climactic fleet action of the age.",
-    windFromDegrees: 215,
+    windFromDegrees: 300,
     british: {
       label: "Royal Navy",
       formation: {
         // 1 first-rate flagship + 6 seventy-fours + 3 frigates, split into the
-        // two famous attack columns (round-robin keeps a heavy ship at each head),
-        // anchored in the bottom-left corner and steering north-east at the line.
+        // two attack columns (round-robin keeps a heavy ship at each head). They
+        // muster to the west and steer due east; columnGap separates the weather
+        // (north) and lee (south) columns abeam of the easterly heading.
         ships: [F1, R3, R3, R3, R3, R3, R3, FR, FR, FR],
-        anchor: { x: -W * 0.76, z: -H * 0.66 },
-        headingDeg: 42,
+        anchor: { x: -W * 0.62, z: 0 },
+        headingDeg: 90,
         columns: 2,
-        columnGap: 240,
+        columnGap: 280,
       },
     },
     enemy: {
       label: "Combined Fleet",
       formation: {
         // Two first-rates (Santísima Trinidad / a Spanish three-decker) amidships,
-        // eight 74s, two frigates — one long line of battle in the upper-right
-        // corner, bent into the slight crescent the allies actually formed (a
-        // gentle 22° bow over the twelve ships, not a tight hook).
+        // eight 74s, two frigates — one long line of battle down the east side,
+        // running roughly south→north. A gentle 44° bow centred on due-north
+        // (headingDeg = −arcDeg/2) curves the line into the historical crescent
+        // that bulges EAST / is concave WEST, toward the attacking British.
         ships: [FR, R3, R3, R3, F1, R3, R3, F1, R3, R3, R3, FR],
-        anchor: { x: W * 0.62, z: H * 0.6 },
-        headingDeg: 270,
-        arcDeg: -22,
+        anchor: { x: W * 0.5, z: -H * 0.92 },
+        headingDeg: 22,
+        arcDeg: -44,
       },
     },
   },
