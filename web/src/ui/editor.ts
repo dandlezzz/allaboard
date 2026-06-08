@@ -28,7 +28,14 @@ import {
 import { ShipClass, shipStats } from "../ships/shipClass";
 import { Faction, accentCss } from "../core/faction";
 import { headingToVector, vectorToHeading } from "../core/nav";
-import { makeWorldMap, DIAGRAM_VB, DIAGRAM_MARGIN, type WorldMap } from "./diagram";
+import {
+  makeWorldMap,
+  shipMarkerPoints,
+  MARKER_STROKE,
+  DIAGRAM_VB,
+  DIAGRAM_MARGIN,
+  type WorldMap,
+} from "./diagram";
 
 const W = Config.ArenaHalfX;
 const H = Config.ArenaHalfZ;
@@ -567,7 +574,8 @@ export class Editor {
       }
     });
 
-    // Ships — one oriented hull tick each, with the selected one highlighted.
+    // Ships — one oriented hull silhouette each, with the selected one
+    // highlighted by a dashed ring and given a rotate handle off the bow.
     for (const side of SIDES) {
       const accent = accentCss(side === "british" ? Faction.British : Faction.FrancoSpanish);
       this.draft[side].ships.forEach((ship, index) => {
@@ -577,7 +585,7 @@ export class Editor {
           this.selectedShip?.side === side &&
           this.selectedShip?.index === index;
         if (selected) {
-          const r = Math.hypot(g.cx - g.bx, g.cy - g.by) + 2;
+          const r = Math.hypot(g.cx - g.bx, g.cy - g.by) * 1.35 + 2;
           svgRoot.appendChild(
             svg("circle", { cx: g.cx, cy: g.cy, r, fill: "none", stroke: "#3a2c1a", "stroke-width": 0.6, "stroke-dasharray": "1.5 1.5" }),
           );
@@ -585,18 +593,14 @@ export class Editor {
           svgRoot.appendChild(svg("circle", { cx: g.rx, cy: g.ry, r: 1.8, fill: "#fff4d6", stroke: "#3a2c1a", "stroke-width": 0.6 }));
         }
         svgRoot.appendChild(
-          svg("line", {
-            x1: g.sx,
-            y1: g.sy,
-            x2: g.bx,
-            y2: g.by,
-            stroke: accent,
-            "stroke-width": selected ? 3 : 2,
-            "stroke-linecap": "round",
+          svg("polygon", {
+            points: shipMarkerPoints(ship, this.map),
+            fill: accent,
+            stroke: MARKER_STROKE,
+            "stroke-width": selected ? 0.7 : 0.4,
+            "stroke-linejoin": "round",
           }),
         );
-        // A small bow dot marks facing direction.
-        svgRoot.appendChild(svg("circle", { cx: g.bx, cy: g.by, r: 0.9, fill: accent }));
       });
     }
   }
@@ -747,7 +751,8 @@ export class Editor {
     for (const side of SIDES) {
       this.draft[side].ships.forEach((ship, index) => {
         const g = this.shipGeom(ship);
-        const reach = Math.max(HIT_RADIUS, Math.hypot(g.cx - g.bx, g.cy - g.by) + 1.5);
+        // Match the drawn marker (scaled ~1.25× the true half-length) plus slack.
+        const reach = Math.max(HIT_RADIUS, Math.hypot(g.cx - g.bx, g.cy - g.by) * 1.25 + 1.5);
         const d = dist2(p.x, p.y, g.cx, g.cy);
         if (d <= reach * reach && d < bestD) {
           bestD = d;
