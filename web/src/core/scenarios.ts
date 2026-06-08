@@ -1,5 +1,5 @@
-// Historical battle SCENARIOS — the data that drives a match's fleets, starting
-// formations, fixed wind, side labels, and optional cosmetic coastline.
+// Battle SCENARIOS — the data that drives a match's fleets, starting formations,
+// fixed wind, side labels, and optional cosmetic coastline.
 //
 // The game keeps its two-faction model unchanged (Faction.British is always the
 // Royal Navy, Faction.FrancoSpanish is whatever the enemy of the day is). A
@@ -9,30 +9,20 @@
 // scenario; scenarios just decide WHERE the ships start, HOW MANY, WHICH wind,
 // and what (purely cosmetic) land is painted at the edge of the arena.
 //
-// Fleet counts are capped at ≤12 per side and scaled DOWN from the historical
-// order of battle while preserving each action's tactical flavour. The original
-// strengths and the scaling rationale are documented inline per scenario, drawn
-// from the standard accounts (Wikipedia / threedecks / NPS / USNI verified via
-// research). Ship TYPES are limited to the three existing classes:
-//   FirstRate  (100+ gun three-decker flagship),
-//   ThirdRate  (74-gun ship of the line — the workhorse),
-//   Frigate    (small, fast — also used to stand in for brigs/sloops/blockships).
+// There are NO built-in battles: `SCENARIOS` ships empty and every battle is
+// authored at runtime in the in-app editor (persisted via `scenarioStore`). The
+// three ship classes are FirstRate (100+ gun three-decker flagship), ThirdRate
+// (74-gun ship of the line), and Frigate (small, fast), capped at ≤12 per side.
 
-import * as Config from "./config";
 import { ShipClass, shipStats } from "../ships/shipClass";
+import * as Config from "./config";
 import { headingToVector } from "./nav";
 import { add, scale, type Vec2 } from "./vec";
 
+// Ship-class shorthands, kept for authoring helpers / future seed data.
 const F1 = ShipClass.FirstRate;
 const R3 = ShipClass.ThirdRate;
 const FR = ShipClass.Frigate;
-
-// Arena half-extents (long axis X, short axis Z). Anchors below are expressed as
-// fractions of these so the layouts scale with the arena.
-const W = Config.ArenaHalfX;
-const H = Config.ArenaHalfZ;
-// Coastline polygons reach beyond the visible field so they meet the screen edge.
-const CW = W * 1.35;
 
 /**
  * One side's starting line/columns. Ships are placed bow-to-stern from a REAR
@@ -57,10 +47,8 @@ export interface FleetFormation {
    * Optional total heading bend (degrees) spread evenly across each column so
    * the line traces a gentle arc instead of a dead-straight column: the rear
    * ship keeps `headingDeg`, each successive ship forward rotates a little more,
-   * and the front ship ends `arcDeg` off the base heading. Default 0 (straight),
-   * so every existing scenario is unaffected. Used for the Combined Fleet's
-   * crescent line of battle at Trafalgar. Positive bends to starboard, negative
-   * to port (relative to the marching direction).
+   * and the front ship ends `arcDeg` off the base heading. Default 0 (straight).
+   * Positive bends to starboard, negative to port (relative to the march).
    */
   arcDeg?: number;
 }
@@ -108,280 +96,15 @@ export interface Scenario {
 }
 
 // ---------------------------------------------------------------------------
-// The five battles.
+// No built-in battles — the gallery is populated entirely by user-authored
+// scenarios from the editor (see `scenarioStore`).
 // ---------------------------------------------------------------------------
 
-export const SCENARIOS: ReadonlyArray<Scenario> = [
-  // === TRAFALGAR (1805) =====================================================
-  // History: 27 British ships of the line (3 first, 4 second, 20 third) vs 33
-  // Franco-Spanish (4 first, 29 third). Nelson attacked in TWO columns sailing
-  // down before a WNW wind from the WEST, straight at the long allied line to
-  // break it. Scaling: 27→10 British, 33→12 allied. Laid out to the historical
-  // noon-21-Oct chart (north up, +X = east): the British bear down from the WEST
-  // in their two famous attack columns — Nelson's weather column (Victory) to
-  // the north, Collingwood's lee column (Royal Sovereign) to the south — steering
-  // due east at mid-height. The Combined Fleet lies in one long near-north–south
-  // line down the EAST side, bent into the shallow crescent it actually formed,
-  // bowing WEST (concave toward the oncoming British), spanning the field's full
-  // height. Wind from the WNW so the British run down before it into the line.
-  {
-    id: "trafalgar",
-    name: "Trafalgar",
-    year: 1805,
-    blurb:
-      "Nelson hurls two columns at right angles into the long Franco-Spanish line to break it apart. Off Cape Trafalgar, the climactic fleet action of the age.",
-    windFromDegrees: 300,
-    british: {
-      label: "Royal Navy",
-      formation: {
-        // 1 first-rate flagship + 6 seventy-fours + 3 frigates, split into the
-        // two attack columns (round-robin keeps a heavy ship at each head). They
-        // muster to the west and steer due east; columnGap separates the weather
-        // (north) and lee (south) columns abeam of the easterly heading.
-        ships: [F1, R3, R3, R3, R3, R3, R3, FR, FR, FR],
-        anchor: { x: -W * 0.62, z: 0 },
-        headingDeg: 90,
-        columns: 2,
-        columnGap: 280,
-      },
-    },
-    enemy: {
-      label: "Combined Fleet",
-      formation: {
-        // Two first-rates (Santísima Trinidad / a Spanish three-decker) amidships,
-        // eight 74s, two frigates — one long line of battle down the east side,
-        // running roughly south→north. A gentle 44° bow centred on due-north
-        // (headingDeg = −arcDeg/2) curves the line into the historical crescent
-        // that bulges EAST / is concave WEST, toward the attacking British.
-        ships: [FR, R3, R3, R3, F1, R3, R3, F1, R3, R3, R3, FR],
-        anchor: { x: W * 0.5, z: -H * 0.92 },
-        headingDeg: 22,
-        arcDeg: -44,
-      },
-    },
-  },
+export const SCENARIOS: ReadonlyArray<Scenario> = [];
 
-  // === THE NILE / ABOUKIR BAY (1798) ========================================
-  // History: 14 British ships of the line vs 13 French anchored line-ahead
-  // (incl. the 120-gun L'Orient) along the shoals of Aboukir Bay, with 4
-  // frigates. Nelson attacked at dusk, doubling the line by slipping ships
-  // between the French and the shore. Scaling: 13→12 French (anchored line),
-  // 14→10 British attacking from seaward. The Nile's were almost all 74s; we
-  // keep the British all-74 (no first-rate) and give the French L'Orient a
-  // first-rate amidships. Coastline + Aboukir island painted along the north.
-  {
-    id: "nile",
-    name: "The Nile",
-    year: 1798,
-    blurb:
-      "A French fleet lies anchored in line along the shoals of Aboukir Bay. Nelson attacks at dusk, doubling the line from both sides in a battle of annihilation.",
-    windFromDegrees: 285,
-    british: {
-      label: "Royal Navy",
-      formation: {
-        // Eight 74s + two frigates bearing down in line from seaward (SW).
-        ships: [R3, R3, R3, R3, R3, R3, R3, R3, FR, FR],
-        anchor: { x: -W * 0.58, z: -H * 0.6 },
-        headingDeg: 60,
-      },
-    },
-    enemy: {
-      label: "Marine Nationale",
-      formation: {
-        // L'Orient (first-rate) amidships, nine 74s, two frigates — anchored line.
-        ships: [FR, R3, R3, R3, R3, F1, R3, R3, R3, R3, R3, FR],
-        anchor: { x: -W * 0.52, z: H * 0.5 },
-        headingDeg: 90,
-      },
-    },
-    land: [
-      // North shore of Aboukir Bay.
-      {
-        polygon: [
-          { x: -CW, z: H * 0.86 },
-          { x: -W * 0.45, z: H * 0.99 },
-          { x: -W * 0.1, z: H * 0.88 },
-          { x: W * 0.25, z: H * 1.02 },
-          { x: W * 0.62, z: H * 0.9 },
-          { x: CW, z: H * 0.96 },
-          { x: CW, z: H * 1.6 },
-          { x: -CW, z: H * 1.6 },
-        ],
-      },
-      // Aboukir Island / shoal on which the head of the French line rested.
-      {
-        polygon: [
-          { x: -W * 0.6, z: H * 0.8 },
-          { x: -W * 0.5, z: H * 0.84 },
-          { x: -W * 0.46, z: H * 0.9 },
-          { x: -W * 0.56, z: H * 0.92 },
-          { x: -W * 0.64, z: H * 0.86 },
-        ],
-      },
-    ],
-  },
-
-  // === THE CHESAPEAKE / VIRGINIA CAPES (1781) ===============================
-  // History: de Grasse's 24 French ships of the line (incl. 110-gun Ville de
-  // Paris) vs Graves's 19 British. A classic, indecisive line-vs-line passing
-  // action off the Virginia Capes — but strategically it sealed Cornwallis's
-  // fate at Yorktown. Scaling: 24→12 French, 19→10 British, deployed as two
-  // parallel battle lines that exchange broadsides abeam. Open water; wind set
-  // ~north so both lines (heading east) sail on the beam.
-  {
-    id: "chesapeake",
-    name: "The Chesapeake",
-    year: 1781,
-    blurb:
-      "Two great battle lines pass and trade broadsides off the Virginia Capes. The French hold the sea — and seal Cornwallis's fate at Yorktown.",
-    windFromDegrees: 350,
-    british: {
-      label: "Royal Navy",
-      formation: {
-        // Flagship London (first-rate stand-in) + seven 74s + two frigates.
-        ships: [F1, R3, R3, R3, R3, R3, R3, R3, FR, FR],
-        anchor: { x: -W * 0.46, z: -H * 0.26 },
-        headingDeg: 90,
-      },
-    },
-    enemy: {
-      label: "Marine Royale",
-      formation: {
-        // Ville de Paris (first-rate) leading, nine 74s, two frigates.
-        ships: [F1, R3, R3, R3, R3, R3, R3, R3, R3, R3, FR, FR],
-        anchor: { x: -W * 0.54, z: H * 0.32 },
-        headingDeg: 90,
-      },
-    },
-  },
-
-  // === COPENHAGEN (1801) ====================================================
-  // History: Nelson took 12 ships of the line (his division) against a Danish
-  // line of ~18 moored blockships, hulks and floating batteries covering the
-  // city, backed by the Tre Kroner fort and shore batteries. He sailed up the
-  // King's Channel and anchored alongside, fighting it out at close range.
-  // Scaling: Danish 18→12 moored line (mostly 74-class hulks + a couple of
-  // frigate-class floating batteries, no first-rates — they were blockships);
-  // British 12→10 (all 74s, as Nelson's division was). Cosmetic city waterfront
-  // + Tre Kroner fort island along the north. Wind set southerly (it veered fair
-  // for Nelson on the morning of the attack).
-  {
-    id: "copenhagen",
-    name: "Copenhagen",
-    year: 1801,
-    blurb:
-      "Nelson sails up the King's Channel and anchors yardarm-to-yardarm against the moored Danish line of defence, beneath the guns of the Tre Kroner fort.",
-    windFromDegrees: 175,
-    british: {
-      label: "Royal Navy",
-      formation: {
-        // Nelson's division: eight 74s + two frigates, sailing up the channel.
-        ships: [R3, R3, R3, R3, R3, R3, R3, R3, FR, FR],
-        anchor: { x: -W * 0.46, z: H * 0.1 },
-        headingDeg: 90,
-      },
-    },
-    enemy: {
-      label: "Dano-Norwegian",
-      formation: {
-        // Moored blockships/hulks (ten 74-class) + two floating batteries (frigate).
-        ships: [FR, R3, R3, R3, R3, R3, R3, R3, R3, R3, R3, FR],
-        anchor: { x: -W * 0.5, z: H * 0.5 },
-        headingDeg: 90,
-      },
-    },
-    land: [
-      // Copenhagen waterfront (north).
-      {
-        polygon: [
-          { x: -CW, z: H * 0.88 },
-          { x: -W * 0.3, z: H * 0.93 },
-          { x: W * 0.1, z: H * 0.9 },
-          { x: W * 0.5, z: H * 0.94 },
-          { x: CW, z: H * 0.92 },
-          { x: CW, z: H * 1.6 },
-          { x: -CW, z: H * 1.6 },
-        ],
-      },
-      // Tre Kroner fort, on its little island off the harbour mouth.
-      {
-        polygon: [
-          { x: W * 0.55, z: H * 0.76 },
-          { x: W * 0.66, z: H * 0.78 },
-          { x: W * 0.69, z: H * 0.84 },
-          { x: W * 0.6, z: H * 0.86 },
-          { x: W * 0.52, z: H * 0.82 },
-        ],
-        fill: 0x8d8377, // stony grey fort rather than sandy coast
-      },
-    ],
-  },
-
-  // === LAKE ERIE (1813) =====================================================
-  // History: Perry's 9-vessel American squadron (brigs Lawrence & Niagara, plus
-  // schooners/sloops) vs Barclay's 6-vessel British squadron (ships Detroit &
-  // Queen Charlotte, plus smaller craft) near Put-in-Bay. Small fresh-water
-  // warships, not ships of the line. Scaling keeps the counts (9 vs 8 — bumping
-  // the British up slightly for playability) but represents the two big brigs /
-  // ships per side as ThirdRate and everything smaller (brigs, schooners,
-  // sloops) as Frigate, since no new ship classes are added. Cosmetic lake
-  // islands at the south. Player commanding the Royal Navy fights the historical
-  // loser's hand — a fun underdog twist; the U.S. squadron is the larger.
-  {
-    id: "lake-erie",
-    name: "Lake Erie",
-    year: 1813,
-    blurb:
-      "Perry's scratch-built squadron of brigs and schooners meets the British line off Put-in-Bay for control of the lake. \"We have met the enemy and they are ours.\"",
-    windFromDegrees: 155,
-    british: {
-      label: "Royal Navy",
-      formation: {
-        // Detroit & Queen Charlotte (ThirdRate) + six smaller craft (Frigate).
-        ships: [R3, FR, R3, FR, FR, FR, FR, FR],
-        anchor: { x: -W * 0.36, z: H * 0.3 },
-        headingDeg: 90,
-      },
-    },
-    enemy: {
-      label: "U.S. Navy",
-      formation: {
-        // Brigs Lawrence & Niagara (ThirdRate) + seven smaller craft (Frigate).
-        ships: [R3, FR, R3, FR, FR, FR, FR, FR, FR],
-        anchor: { x: -W * 0.4, z: -H * 0.32 },
-        headingDeg: 90,
-      },
-    },
-    land: [
-      // South lake shore.
-      {
-        polygon: [
-          { x: -CW, z: -H * 0.9 },
-          { x: -W * 0.55, z: -H * 0.94 },
-          { x: -W * 0.32, z: -H * 0.88 },
-          { x: -W * 0.36, z: -H * 1.6 },
-          { x: -CW, z: -H * 1.6 },
-        ],
-        fill: 0x8fa05c, // wooded lakeshore green
-      },
-      // A wooded island (Put-in-Bay / Rattlesnake) in the south of the field.
-      {
-        polygon: [
-          { x: -W * 0.12, z: -H * 0.82 },
-          { x: W * 0.06, z: -H * 0.78 },
-          { x: W * 0.18, z: -H * 0.84 },
-          { x: W * 0.1, z: -H * 0.94 },
-          { x: -W * 0.1, z: -H * 0.92 },
-        ],
-        fill: 0x8fa05c,
-      },
-    ],
-  },
-];
-
-/** Looks up a scenario by id (falls back to the first scenario). */
-export function getScenario(id: string): Scenario {
-  return SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0];
+/** Looks up a built-in scenario by id; `undefined` if none match (now always). */
+export function getScenario(id: string): Scenario | undefined {
+  return SCENARIOS.find((s) => s.id === id);
 }
 
 /**

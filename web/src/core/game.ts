@@ -18,7 +18,7 @@ import { shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
 import { buildScene } from "../rendering/scene";
-import { type Scenario, type FleetFormation, SCENARIOS, formationPositions } from "./scenarios";
+import { type Scenario, type FleetFormation, formationPositions } from "./scenarios";
 import { resolveScenario } from "./scenarioStore";
 import type { Hud, Opponent } from "../ui/hud";
 import type { PointerSample } from "../board/input";
@@ -205,12 +205,13 @@ export class Game {
   // reuses it). The menu persona buttons set this and start a fresh game.
   private aiPersona: AIPersona = AIPersona.Standard;
 
-  // ---- Scenario (the chosen historical battle) --------------------------
+  // ---- Scenario (the chosen battle) -------------------------------------
   // The scenario drives fleet composition, starting formations, fixed wind,
   // per-side display labels, and any cosmetic coastline. Gameplay is otherwise
-  // identical across scenarios. Defaults to the first battle so the field is
-  // populated behind the opening menu; the menu replaces it via configureMatch.
-  private scenario: Scenario = SCENARIOS[0];
+  // identical across scenarios. `null` until the menu launches one — at boot the
+  // field is EMPTY (just sea) behind the opening menu, since there are no
+  // built-in battles; `configureMatch` sets it from a user-authored scenario.
+  private scenario: Scenario | null = null;
   /** Which faction the (first) human player commands; the other is the AI/2P side. */
   private playerFaction: Faction = Faction.British;
   /** Per-scenario setup-pad centres, computed from each fleet's spawned centroid. */
@@ -234,17 +235,17 @@ export class Game {
   start(): void {
     seed(Math.floor(Math.random() * 0xffffffff));
 
-    // Default match (Royal Navy vs Standard AI on the first battle) so the sea is
-    // populated behind the opening scenario menu; confirming a battle in the menu
-    // replaces this via configureMatch().
-    this.scenario = SCENARIOS[0];
+    // No battle is chosen yet: the field opens EMPTY (just sea) behind the
+    // scenario menu, which is shown on boot so the player goes straight to
+    // creating/launching a battle. `configureMatch` populates it later.
+    this.scenario = null;
     this.playerFaction = Faction.British;
     this.control.set(Faction.British, ControlMode.Human);
     this.control.set(Faction.FrancoSpanish, ControlMode.AI);
     this.ai.set(Faction.FrancoSpanish, new FleetAI(Faction.FrancoSpanish, this.aiPersona));
-    this.hud.setSideLabels(this.scenario.british.label, this.scenario.enemy.label);
+    this.hud.setSideLabels(this.sideLabel(Faction.British), this.sideLabel(Faction.FrancoSpanish));
 
-    this.wind = new Wind(this.scenario.windFromDegrees);
+    this.wind = new Wind(0);
     this.enterSetup();
   }
 
@@ -257,7 +258,9 @@ export class Game {
    * AI (or the second human in 2-player).
    */
   configureMatch(scenarioId: string, playerFaction: Faction, opponent: Opponent): void {
-    this.scenario = resolveScenario(scenarioId);
+    const scenario = resolveScenario(scenarioId);
+    if (!scenario) return; // unknown/deleted scenario → leave the field as-is
+    this.scenario = scenario;
     this.playerFaction = playerFaction;
     const enemy = enemyOf(playerFaction);
 
@@ -273,7 +276,7 @@ export class Game {
       this.ai.set(enemy, new FleetAI(enemy, opponent));
     }
 
-    this.hud.setSideLabels(this.scenario.british.label, this.scenario.enemy.label);
+    this.hud.setSideLabels(this.sideLabel(Faction.British), this.sideLabel(Faction.FrancoSpanish));
     this.restart();
   }
 
@@ -879,12 +882,15 @@ export class Game {
     this.batonHeld.clear();
 
     // (Re)build the sea + this scenario's cosmetic coastline beneath the fleets.
-    buildScene(this.renderer.seaLayer, this.scenario.land);
+    buildScene(this.renderer.seaLayer, this.scenario?.land);
 
     // Place both fleets from the chosen scenario's formations, then derive each
-    // side's setup pad from where its ships actually ended up.
-    this.spawnFleet(Faction.British, this.scenario.british.formation);
-    this.spawnFleet(Faction.FrancoSpanish, this.scenario.enemy.formation);
+    // side's setup pad from where its ships actually ended up. With no scenario
+    // (boot screen) the field stays empty — just sea — until the menu launches one.
+    if (this.scenario) {
+      this.spawnFleet(Faction.British, this.scenario.british.formation);
+      this.spawnFleet(Faction.FrancoSpanish, this.scenario.enemy.formation);
+    }
     this.computePads();
   }
 
@@ -1070,7 +1076,7 @@ export class Game {
   /** Rematch: a fresh match of the SAME scenario, back in Setup (re-place pieces),
    *  with the scenario's fixed wind reset. */
   restart(): void {
-    this.wind = new Wind(this.scenario.windFromDegrees);
+    this.wind = new Wind(this.scenario?.windFromDegrees ?? 0);
     this.enterSetup();
   }
 
@@ -1190,10 +1196,13 @@ export class Game {
     return this.padPos.get(faction) ?? defaultPad(faction);
   }
 
-  /** Scenario display label for a side (e.g. "Royal Navy" / "Combined Fleet"). */
+  /** Scenario display label for a side (falls back to the generic faction name
+   *  when no battle is loaded). */
   private sideLabel(faction: Faction): string {
-    if (faction === Faction.British) return this.scenario.british.label;
-    if (faction === Faction.FrancoSpanish) return this.scenario.enemy.label;
+    if (this.scenario) {
+      if (faction === Faction.British) return this.scenario.british.label;
+      if (faction === Faction.FrancoSpanish) return this.scenario.enemy.label;
+    }
     return displayName(faction);
   }
 

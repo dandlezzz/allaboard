@@ -19,7 +19,9 @@ import * as Config from "./config";
 import { ShipClass } from "../ships/shipClass";
 import { SCENARIOS, type Scenario, type FleetFormation, type LandShape } from "./scenarios";
 
-const STORAGE_KEY = "trafalgar.customScenarios.v1";
+const STORAGE_KEY = "trafalgar.customScenarios.v2";
+/** Superseded keys, purged on first load so stale customs never reappear. */
+const LEGACY_KEYS = ["trafalgar.customScenarios.v1"];
 const W = Config.ArenaHalfX;
 const H = Config.ArenaHalfZ;
 
@@ -32,6 +34,8 @@ let cache: Scenario[] | null = null;
 
 function readStorage(): Scenario[] {
   try {
+    // Drop any superseded versions so previously-saved customs don't linger.
+    for (const k of LEGACY_KEYS) localStorage.removeItem(k);
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
@@ -71,9 +75,9 @@ export function isCustomScenario(id: string): boolean {
   return customScenarios().some((s) => s.id === id);
 }
 
-/** Resolves any id (built-in or custom), falling back to the first built-in. */
-export function resolveScenario(id: string): Scenario {
-  return listScenarios().find((s) => s.id === id) ?? SCENARIOS[0];
+/** Resolves any id (built-in or custom); `undefined` if no scenario matches. */
+export function resolveScenario(id: string): Scenario | undefined {
+  return listScenarios().find((s) => s.id === id);
 }
 
 // ---------------------------------------------------------------------------

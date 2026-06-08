@@ -76,7 +76,7 @@ export class Menu {
   private readonly howtoClose = el<HTMLButtonElement>("howto-close");
   private readonly battlesToggle = el<HTMLButtonElement>("battles-toggle");
 
-  private selected: Scenario = listScenarios()[0];
+  private selected: Scenario | null = null;
   private playerFaction: Faction = Faction.British;
   private opponent: Opponent = AIPersona.Standard;
   /** True once at least one match has started (so the menu may be dismissed). */
@@ -184,7 +184,7 @@ export class Menu {
           // Two-click confirm (no native dialog, which the Board WebView may block).
           if (btn.dataset.confirm === "1") {
             deleteCustomScenario(s.id);
-            if (this.selected.id === s.id) this.selected = listScenarios()[0];
+            if (this.selected?.id === s.id) this.selected = null;
             this.buildGallery();
           } else {
             btn.dataset.confirm = "1";
@@ -212,16 +212,18 @@ export class Menu {
 
   private buildSideCards(): void {
     this.sideSelect.replaceChildren();
+    const sel = this.selected;
+    if (!sel) return;
     const sides: { faction: Faction; label: string; ships: Scenario["british"]["formation"]["ships"] }[] = [
       {
         faction: Faction.British,
-        label: this.selected.british.label,
-        ships: this.selected.british.formation.ships,
+        label: sel.british.label,
+        ships: sel.british.formation.ships,
       },
       {
         faction: Faction.FrancoSpanish,
-        label: this.selected.enemy.label,
-        ships: this.selected.enemy.formation.ships,
+        label: sel.enemy.label,
+        ships: sel.enemy.formation.ships,
       },
     ];
     for (const side of sides) {
@@ -276,6 +278,7 @@ export class Menu {
   }
 
   private begin(): void {
+    if (!this.selected) return; // nothing selected (empty gallery) → no-op
     this.matchStarted = true;
     this.callbacks.onBegin(this.selected.id, this.playerFaction, this.opponent);
     this.close();
