@@ -12,13 +12,26 @@
 // the browser build works without any Board hardware; the Game is driven only
 // through the onBegin callback. Gameplay is untouched.
 
-import { SCENARIOS, fleetSummary, formationPositions, type Scenario } from "../core/scenarios";
+import { fleetSummary, type Scenario } from "../core/scenarios";
+import {
+  listScenarios,
+  isCustomScenario,
+  deleteCustomScenario,
+  blankScenario,
+  duplicateScenario,
+} from "../core/scenarioStore";
 import { Faction, accentCss } from "../core/faction";
-import { headingToVector } from "../core/nav";
-import { shipStats } from "../ships/shipClass";
-import * as Config from "../core/config";
+import { scenarioDiagram } from "./diagram";
+import { Editor } from "./editor";
 import { AIPersona } from "../ai/fleetAI";
 import type { Opponent } from "./hud";
+
+/** Escapes user-authored text before it goes into card `innerHTML`. */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+  );
+}
 
 export interface MenuCallbacks {
   /** Start a match: chosen battle, the side the player commands, the opponent. */
@@ -63,11 +76,16 @@ export class Menu {
   private readonly howtoClose = el<HTMLButtonElement>("howto-close");
   private readonly battlesToggle = el<HTMLButtonElement>("battles-toggle");
 
-  private selected: Scenario = SCENARIOS[0];
+  private selected: Scenario = listScenarios()[0];
   private playerFaction: Faction = Faction.British;
   private opponent: Opponent = AIPersona.Standard;
   /** True once at least one match has started (so the menu may be dismissed). */
   private matchStarted = false;
+
+  /** The in-app scenario editor (its own overlay above the menu). */
+  private readonly editor = new Editor({
+    onSaved: () => this.buildGallery(),
+  });
 
   constructor(private readonly callbacks: MenuCallbacks) {
     this.buildGallery();
@@ -103,28 +121,80 @@ export class Menu {
 
   private buildGallery(): void {
     this.gallery.replaceChildren();
-    for (const s of SCENARIOS) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "chart-card";
-      card.innerHTML = `
-        <div class="chart-card-head">
-          <span class="chart-card-name">${s.name}</span>
-          <span class="chart-card-year">${s.year}</span>
-        </div>
-        ${scenarioDiagram(s)}
-        <div class="chart-card-legend">
-          <span class="legend-row"><i class="swatch" style="background:${accentCss(
-            Faction.British,
-          )}"></i>${s.british.label}</span>
-          <span class="legend-row"><i class="swatch" style="background:${accentCss(
-            Faction.FrancoSpanish,
-          )}"></i>${s.enemy.label}</span>
-        </div>
-        <p class="chart-card-blurb">${s.blurb}</p>`;
-      card.addEventListener("click", () => this.pickScenario(s));
-      this.gallery.appendChild(card);
+    for (const s of listScenarios()) {
+      this.gallery.appendChild(this.buildCard(s));
     }
+
+    // Trailing "Create Battle" card → opens the editor on a blank scenario.
+    const create = document.createElement("button");
+    create.type = "button";
+    create.className = "chart-card create-card";
+    create.innerHTML = `<span class="create-plus" aria-hidden="true">＋</span><span class="create-label">Create Battle</span>`;
+    create.addEventListener("click", () => this.editor.open(blankScenario(), { isNew: true }));
+    this.gallery.appendChild(create);
+  }
+
+  /** One scenario chart card, with duplicate/edit/delete affordances. */
+  private buildCard(s: Scenario): HTMLElement {
+    const card = document.createElement("div");
+    card.className = "chart-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    const custom = isCustomScenario(s.id);
+    card.innerHTML = `
+      <div class="chart-card-head">
+        <span class="chart-card-name">${escapeHtml(s.name)}</span>
+        <span class="chart-card-year">${s.year}</span>
+      </div>
+      ${scenarioDiagram(s)}
+      <div class="chart-card-legend">
+        <span class="legend-row"><i class="swatch" style="background:${accentCss(
+          Faction.British,
+        )}"></i>${escapeHtml(s.british.label)}</span>
+        <span class="legend-row"><i class="swatch" style="background:${accentCss(
+          Faction.FrancoSpanish,
+        )}"></i>${escapeHtml(s.enemy.label)}</span>
+      </div>
+      <p class="chart-card-blurb">${escapeHtml(s.blurb)}</p>
+      <div class="chart-card-actions">
+        ${custom ? `<span class="chart-card-tag">Custom</span>` : ""}
+        <button type="button" class="card-action" data-act="duplicate">Duplicate</button>
+        ${custom ? `<button type="button" class="card-action" data-act="edit">Edit</button>` : ""}
+        ${custom ? `<button type="button" class="card-action danger" data-act="delete">Delete</button>` : ""}
+      </div>`;
+
+    const pick = (): void => this.pickScenario(s);
+    card.addEventListener("click", pick);
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        pick();
+      }
+    });
+
+    for (const btn of Array.from(card.querySelectorAll<HTMLButtonElement>(".card-action"))) {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const act = btn.dataset.act;
+        if (act === "duplicate") {
+          this.editor.open(duplicateScenario(s), { isNew: true });
+        } else if (act === "edit") {
+          this.editor.open(JSON.parse(JSON.stringify(s)) as Scenario, { isNew: false });
+        } else if (act === "delete") {
+          // Two-click confirm (no native dialog, which the Board WebView may block).
+          if (btn.dataset.confirm === "1") {
+            deleteCustomScenario(s.id);
+            if (this.selected.id === s.id) this.selected = listScenarios()[0];
+            this.buildGallery();
+          } else {
+            btn.dataset.confirm = "1";
+            btn.textContent = "Confirm?";
+            btn.classList.add("armed");
+          }
+        }
+      });
+    }
+    return card;
   }
 
   private pickScenario(s: Scenario): void {
@@ -227,45 +297,3 @@ export class Menu {
   }
 }
 
-// Mini starting-position diagram for a chart card. Drawn straight from the same
-// `formationPositions` math the live spawner uses, so the card always shows where
-// the ships actually start. World coordinates (X = long axis, Z = short axis) map
-// into the viewBox with +X → right and +Z → up (north up); each ship is a short
-// tick drawn along its bow heading and tinted with its side's accent colour, over
-// a faint parchment "chart" of the whole arena.
-const DIAGRAM_VB = { w: 120, h: 68 } as const;
-const DIAGRAM_MARGIN = 7;
-
-function scenarioDiagram(scenario: Scenario): string {
-  const W = Config.ArenaHalfX;
-  const H = Config.ArenaHalfZ;
-  const innerW = DIAGRAM_VB.w - 2 * DIAGRAM_MARGIN;
-  const innerH = DIAGRAM_VB.h - 2 * DIAGRAM_MARGIN;
-  const px = (x: number) => DIAGRAM_MARGIN + ((x + W) / (2 * W)) * innerW;
-  const pz = (z: number) => DIAGRAM_MARGIN + ((H - z) / (2 * H)) * innerH;
-
-  const fleetTicks = (formation: Scenario["british"]["formation"], color: string) =>
-    formationPositions(formation)
-      .map((p) => {
-        const half = shipStats(p.shipClass).length * 0.5;
-        const dir = headingToVector(p.headingDeg);
-        const x1 = px(p.pos.x - dir.x * half).toFixed(1);
-        const y1 = pz(p.pos.z - dir.z * half).toFixed(1);
-        const x2 = px(p.pos.x + dir.x * half).toFixed(1);
-        const y2 = pz(p.pos.z + dir.z * half).toFixed(1);
-        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" />`;
-      })
-      .join("");
-
-  const british = fleetTicks(scenario.british.formation, accentCss(Faction.British));
-  const enemy = fleetTicks(scenario.enemy.formation, accentCss(Faction.FrancoSpanish));
-  return `
-    <svg class="chart-card-diagram" viewBox="0 0 ${DIAGRAM_VB.w} ${DIAGRAM_VB.h}" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="${DIAGRAM_VB.w - 3}" height="${DIAGRAM_VB.h - 3}" rx="2"
-            fill="#e7d4ac" stroke="#8a7546" stroke-width="0.8" />
-      <g stroke-width="2" stroke-linecap="round">
-        ${british}
-        ${enemy}
-      </g>
-    </svg>`;
-}

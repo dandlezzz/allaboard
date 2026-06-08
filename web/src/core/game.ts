@@ -18,13 +18,8 @@ import { shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
 import { buildScene } from "../rendering/scene";
-import {
-  type Scenario,
-  type FleetFormation,
-  SCENARIOS,
-  getScenario,
-  formationPositions,
-} from "./scenarios";
+import { type Scenario, type FleetFormation, SCENARIOS, formationPositions } from "./scenarios";
+import { resolveScenario } from "./scenarioStore";
 import type { Hud, Opponent } from "../ui/hud";
 import type { PointerSample } from "../board/input";
 import type { PauseMenu } from "../board/pauseMenu";
@@ -262,7 +257,7 @@ export class Game {
    * AI (or the second human in 2-player).
    */
   configureMatch(scenarioId: string, playerFaction: Faction, opponent: Opponent): void {
-    this.scenario = getScenario(scenarioId);
+    this.scenario = resolveScenario(scenarioId);
     this.playerFaction = playerFaction;
     const enemy = enemyOf(playerFaction);
 
