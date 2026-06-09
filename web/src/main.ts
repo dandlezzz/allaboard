@@ -30,31 +30,6 @@ async function main(): Promise<void> {
   document.body.classList.toggle("board-device", onDevice);
   document.body.classList.toggle("browser-preview", !onDevice);
 
-  // ===== TEMPORARY DEBUG HARNESS — REMOVE BEFORE SHIPPING =====
-  // Dumps the raw custom-scenario Board.save slot(s) to the device console so we
-  // can extract the user's configured "Trafalgar" battle out of the logs.
-  if (onDevice && board?.save) {
-    void (async () => {
-      try {
-        const saves = await board.save!.list();
-        console.log("TRAFALGAR_DUMP: slots=" + JSON.stringify(saves));
-        for (const s of saves) {
-          try {
-            const bytes = await board.save!.load(s.id);
-            const text = new TextDecoder().decode(bytes);
-            console.log("TRAFALGAR_DUMP: id=" + s.id + " desc=" + s.description + " data=" + text);
-          } catch (e) {
-            console.log("TRAFALGAR_DUMP: load-failed id=" + s.id + " err=" + String(e));
-          }
-        }
-        console.log("TRAFALGAR_DUMP: done");
-      } catch (e) {
-        console.log("TRAFALGAR_DUMP: list-failed err=" + String(e));
-      }
-    })();
-  }
-  // ===== END TEMPORARY DEBUG HARNESS =====
-
   const renderer = new Renderer();
   await renderer.init(canvas);
 

@@ -10,9 +10,10 @@
 // facing, the WIND, and any (purely cosmetic) land at the edge of the arena.
 //
 // Ships are placed individually ("chessboard"-style) in the in-app editor — there
-// is no formation/rows abstraction. There are NO built-in battles: `SCENARIOS`
-// ships empty and every battle is authored at runtime (persisted via
-// `scenarioStore`). The three ship classes are FirstRate (100+ gun three-decker
+// is no formation/rows abstraction. `SCENARIOS` ships a couple of built-in
+// battles ("Open Water" sandbox and the premade "Trafalgar"); further battles are
+// authored at runtime (persisted via `scenarioStore`). The three ship classes
+// are FirstRate (100+ gun three-decker
 // flagship), ThirdRate (74-gun ship of the line), and Frigate (small, fast),
 // capped at ≤12 per side.
 
@@ -122,6 +123,54 @@ const OPEN_WATER_LINE: ShipClass[] = [
   ShipClass.Frigate,
 ];
 
+// The premade "Trafalgar" battle, baked in from the configuration authored in
+// the in-app scenario editor. Ship placements/headings/classes are the exact
+// literal values captured from the device's saved custom scenario, so this
+// ships with the source instead of living only in per-device save data. Fixed
+// wind from 335°; 12 ships per side.
+const TRAFALGAR: Scenario = {
+  id: "trafalgar",
+  name: "Trafalgar",
+  year: 1805,
+  blurb:
+    "Cape Trafalgar, 21 October 1805: Nelson's fleet bears down on the combined Franco-Spanish line in two converging columns. A decisive close-quarters melee under a steady wind.",
+  windFromDegrees: 335,
+  british: {
+    label: "Royal Navy",
+    ships: [
+      { pos: { x: -715.1361812894402, z: 86.63997894696905 }, headingDeg: 90, shipClass: ShipClass.ThirdRate },
+      { pos: { x: -150.38620191854875, z: 47.26023134625598 }, headingDeg: 90, shipClass: ShipClass.FirstRate },
+      { pos: { x: -505.42179110308217, z: 80.41765198397547 }, headingDeg: 90, shipClass: ShipClass.ThirdRate },
+      { pos: { x: -266.08737073467137, z: 59.19657971227525 }, headingDeg: 89, shipClass: ShipClass.FirstRate },
+      { pos: { x: -165.74551098093696, z: -50.8830774410136 }, headingDeg: 90, shipClass: ShipClass.FirstRate },
+      { pos: { x: -460.94805548771797, z: -38.334608645967705 }, headingDeg: 90, shipClass: ShipClass.ThirdRate },
+      { pos: { x: -607.1990588125468, z: 86.4359388039602 }, headingDeg: 90, shipClass: ShipClass.ThirdRate },
+      { pos: { x: -371.15517173837134, z: -50.47499715499589 }, headingDeg: 86, shipClass: ShipClass.ThirdRate },
+      { pos: { x: -287.26971455148157, z: -53.63761937163349 }, headingDeg: 90, shipClass: ShipClass.FirstRate },
+      { pos: { x: -386.68326441682984, z: 67.46903779736215 }, headingDeg: 93, shipClass: ShipClass.ThirdRate },
+      { pos: { x: -623.9915781273312, z: -67.51319926349959 }, headingDeg: 90, shipClass: ShipClass.ThirdRate },
+      { pos: { x: -544.1583782103269, z: -51.08711758402262 }, headingDeg: 83, shipClass: ShipClass.Frigate },
+    ],
+  },
+  enemy: {
+    label: "Enemy Fleet",
+    ships: [
+      { pos: { x: 573.8642946386822, z: 382.294146166831 }, headingDeg: 181, shipClass: ShipClass.ThirdRate },
+      { pos: { x: 560.0240381209258, z: -210.95256963147722 }, headingDeg: 184, shipClass: ShipClass.ThirdRate },
+      { pos: { x: 706.2750414457544, z: 349.0866128921364 }, headingDeg: 180, shipClass: ShipClass.ThirdRate },
+      { pos: { x: 708.2160530305619, z: 119.59246204290264 }, headingDeg: 181, shipClass: ShipClass.FirstRate },
+      { pos: { x: 736.4029169142852, z: -68.53254981128134 }, headingDeg: 169, shipClass: ShipClass.FirstRate },
+      { pos: { x: 699.7768722270521, z: 253.74885607123883 }, headingDeg: 194, shipClass: ShipClass.FirstRate },
+      { pos: { x: 672.7714936558198, z: 458.19707936613304 }, headingDeg: 162, shipClass: ShipClass.FirstRate },
+      { pos: { x: 578.5902358886478, z: 193.65903395512476 }, headingDeg: 185, shipClass: ShipClass.ThirdRate },
+      { pos: { x: 829.7402566011062, z: 436.4668041356877 }, headingDeg: 190, shipClass: ShipClass.FirstRate },
+      { pos: { x: 545.846214371029, z: -419.78765600106203 }, headingDeg: 209, shipClass: ShipClass.ThirdRate },
+      { pos: { x: 649.8169218702726, z: -348.0675457334421 }, headingDeg: 201, shipClass: ShipClass.ThirdRate },
+      { pos: { x: 698.08903606635, z: -224.52123914156743 }, headingDeg: 181, shipClass: ShipClass.Frigate },
+    ],
+  },
+};
+
 export const SCENARIOS: ReadonlyArray<Scenario> = [
   {
     id: "open-water",
@@ -144,6 +193,7 @@ export const SCENARIOS: ReadonlyArray<Scenario> = [
       ships: line(W * 0.55, 270, OPEN_WATER_LINE),
     },
   },
+  TRAFALGAR,
 ];
 
 /** Looks up a built-in scenario by id; `undefined` if none match (now always). */
