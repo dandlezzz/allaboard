@@ -215,10 +215,10 @@ export class Editor {
       return;
     }
     // A side with no ships is allowed (saved as-is) but flagged so the user
-    // knows; we never silently no-op on Save.
-    try {
-      upsertCustomScenario(clean);
-    } catch {
+    // knows; we never silently no-op on Save. `upsertCustomScenario` reports
+    // whether the write actually reached durable storage — if not, keep the
+    // editor open and warn rather than closing as if the battle were saved.
+    if (!upsertCustomScenario(clean)) {
       this.flash("Couldn't save — storage is unavailable.");
       return;
     }

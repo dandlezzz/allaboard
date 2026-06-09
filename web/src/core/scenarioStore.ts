@@ -20,8 +20,11 @@ import { ShipClass } from "../ships/shipClass";
 import { SCENARIOS, type Scenario, type ShipPlacement, type LandShape } from "./scenarios";
 
 const STORAGE_KEY = "trafalgar.customScenarios.v3";
-/** Superseded keys, purged on first load so stale customs never reappear. v2 and
- *  earlier used the old formation-based shape, incompatible with explicit ships. */
+/** Older storage keys, listed OLDEST→NEWEST. On load we forward-MIGRATE the most
+ *  recent of these into the current key (rather than blindly deleting it) so a
+ *  storage-key/format bump never silently drops the user's authored battles — the
+ *  scenario survives even if an old fleet shape sanitises to empty and has to be
+ *  re-populated in the editor. Once migrated, the legacy keys are removed. */
 const LEGACY_KEYS = ["trafalgar.customScenarios.v1", "trafalgar.customScenarios.v2"];
 const W = Config.ArenaHalfX;
 const H = Config.ArenaHalfZ;
@@ -33,26 +36,62 @@ let cache: Scenario[] | null = null;
 // Read / write
 // ---------------------------------------------------------------------------
 
-function readStorage(): Scenario[] {
+/** Parses one storage slot into a sanitised scenario list (empty if absent or
+ *  unreadable). Pure read — never mutates storage. */
+function parseSlot(raw: string | null): Scenario[] {
+  if (!raw) return [];
   try {
-    // Drop any superseded versions so previously-saved customs don't linger.
-    for (const k of LEGACY_KEYS) localStorage.removeItem(k);
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.map((s) => sanitizeScenario(s)).filter((s): s is Scenario => s !== null);
+  } catch {
+    return [];
+  }
+}
+
+function purgeLegacyKeys(): void {
+  for (const k of LEGACY_KEYS) localStorage.removeItem(k);
+}
+
+function readStorage(): Scenario[] {
+  try {
+    const current = parseSlot(localStorage.getItem(STORAGE_KEY));
+    if (current.length > 0) {
+      // Current data wins; drop any stale legacy copies left behind.
+      purgeLegacyKeys();
+      return current;
+    }
+    // No current data: forward-migrate the NEWEST legacy key that still holds
+    // recoverable scenarios, persist it under the current key, then clean up. This
+    // is what makes customs survive a storage-key bump instead of vanishing.
+    for (let i = LEGACY_KEYS.length - 1; i >= 0; i--) {
+      const migrated = parseSlot(localStorage.getItem(LEGACY_KEYS[i]));
+      if (migrated.length > 0) {
+        writeStorage(migrated);
+        purgeLegacyKeys();
+        return migrated;
+      }
+    }
+    purgeLegacyKeys();
+    return current; // genuinely empty
   } catch {
     return []; // corrupt/unavailable storage → behave as if there are no customs
   }
 }
 
-function writeStorage(list: Scenario[]): void {
+/** Persists the list, returning `false` if storage rejected the write (quota,
+ *  privacy mode, or a host WebView with DOM storage disabled). Callers MUST NOT
+ *  treat a save as durable without checking this — a swallowed failure here is
+ *  exactly how "my scenarios aren't persisting" looks to the player. */
+function writeStorage(list: Scenario[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    // Quota or privacy-mode failure: keep the in-memory cache so the session
-    // still works; persistence just won't survive the reload.
+    return true;
+  } catch (err) {
+    // Keep the in-memory cache so the session still works, but SIGNAL the failure
+    // so the editor can warn the user instead of silently closing as if saved.
+    console.warn("[scenarioStore] failed to persist custom scenarios:", err);
+    return false;
   }
 }
 
@@ -85,20 +124,22 @@ export function resolveScenario(id: string): Scenario | undefined {
 // Mutations
 // ---------------------------------------------------------------------------
 
-/** Inserts or replaces a custom scenario by id, persisting the new list. */
-export function upsertCustomScenario(scenario: Scenario): void {
+/** Inserts or replaces a custom scenario by id. Returns `true` if the new list
+ *  was durably persisted; `false` means it lives only in this session's cache. */
+export function upsertCustomScenario(scenario: Scenario): boolean {
   const list = customScenarios().slice();
   const i = list.findIndex((s) => s.id === scenario.id);
   if (i >= 0) list[i] = scenario;
   else list.push(scenario);
   cache = list;
-  writeStorage(list);
+  return writeStorage(list);
 }
 
-/** Removes a custom scenario by id (no-op for built-ins). */
-export function deleteCustomScenario(id: string): void {
+/** Removes a custom scenario by id (no-op for built-ins). Returns `true` if the
+ *  pruned list was durably persisted. */
+export function deleteCustomScenario(id: string): boolean {
   cache = customScenarios().filter((s) => s.id !== id);
-  writeStorage(cache);
+  return writeStorage(cache);
 }
 
 /** A collision-resistant id for a freshly-created custom scenario. */
@@ -184,6 +225,7 @@ export function sanitizeScenario(v: unknown): Scenario | null {
       ships: sanitizeShips(enemy.ships),
     },
   };
+  if (o.randomWind === true) scenario.randomWind = true;
   const land = sanitizeLand(o.land);
   if (land) scenario.land = land;
   return scenario;

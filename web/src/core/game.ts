@@ -6,7 +6,7 @@
 import * as Config from "./config";
 import { Faction, ControlMode, accentColor, displayName, enemyOf } from "./faction";
 import { normalize360, vectorToHeading, angleDifference } from "./nav";
-import { seed } from "./rng";
+import { seed, rangeFloat } from "./rng";
 import { distance, add, scale, sub, magnitude, dot, type Vec2 } from "./vec";
 import { Wind, pointOfSailColor } from "../combat/wind";
 import { CombatSystem } from "../combat/combatSystem";
@@ -1074,9 +1074,15 @@ export class Game {
   }
 
   /** Rematch: a fresh match of the SAME scenario, back in Setup (re-place pieces),
-   *  with the scenario's fixed wind reset. */
+   *  with the scenario's wind reset. A `randomWind` scenario (e.g. the Open Water
+   *  sandbox) gets a fresh random bearing each start (mirrors the old free-play
+   *  default, `normalize360(rangeFloat(45, 315))`); otherwise the scenario's fixed
+   *  `windFromDegrees` is used. */
   restart(): void {
-    this.wind = new Wind(this.scenario?.windFromDegrees ?? 0);
+    const fromDeg = this.scenario?.randomWind
+      ? normalize360(rangeFloat(45, 315))
+      : (this.scenario?.windFromDegrees ?? 0);
+    this.wind = new Wind(fromDeg);
     this.enterSetup();
   }
 

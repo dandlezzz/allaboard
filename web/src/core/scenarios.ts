@@ -16,8 +16,12 @@
 // flagship), ThirdRate (74-gun ship of the line), and Frigate (small, fast),
 // capped at ≤12 per side.
 
+import * as Config from "./config";
 import { ShipClass } from "../ships/shipClass";
 import type { Vec2 } from "./vec";
+
+const W = Config.ArenaHalfX;
+const H = Config.ArenaHalfZ;
 
 /**
  * One placed ship: where it sits, which way its bow points, and its class
@@ -56,8 +60,13 @@ export interface Scenario {
   year: number;
   /** 1–2 sentence historical/tactical blurb for the menu. */
   blurb: string;
-  /** Fixed initial wind (degrees the wind blows FROM). Veers normally after. */
+  /** Fixed initial wind (degrees the wind blows FROM). Veers normally after.
+   *  Ignored when `randomWind` is set. */
   windFromDegrees: number;
+  /** When true, the initial wind is RANDOMISED at each match start (mirrors the
+   *  old free-play default) instead of using `windFromDegrees`. See the wind init
+   *  in `Game.restart`. Plain boolean → serialises/persists like any other field. */
+  randomWind?: boolean;
   /** Royal Navy side (Faction.British). */
   british: SideSpec;
   /** The opposing side (Faction.FrancoSpanish — French/Spanish/Danish/American). */
@@ -67,11 +76,59 @@ export interface Scenario {
 }
 
 // ---------------------------------------------------------------------------
-// No built-in battles — the gallery is populated entirely by user-authored
-// scenarios from the editor (see `scenarioStore`).
+// Built-in battles. "Open Water" is the free-play / sandbox setup that mirrors
+// the game's old hardcoded default match: a flagship-led line per side, mixed
+// classes, and a wind randomised at each start. Custom scenarios from the editor
+// are layered on top of this list by `scenarioStore`.
 // ---------------------------------------------------------------------------
 
-export const SCENARIOS: ReadonlyArray<Scenario> = [];
+/** Builds one side's line: ships spread evenly along Z near `x`, all sharing
+ *  `headingDeg` (bows pointed at the opposing fleet). Index 0 (the flagship)
+ *  leads. Mirrors the class mix of the old free-play default, scaled to 4/side. */
+function line(x: number, headingDeg: number, classes: ShipClass[]): ShipPlacement[] {
+  const n = classes.length;
+  return classes.map((shipClass, i) => {
+    // Even spread across the short axis, centred on z = 0 (e.g. 4 ships →
+    // −0.45H, −0.15H, +0.15H, +0.45H), so each side reads as a tidy battle line.
+    const t = n === 1 ? 0 : (i / (n - 1)) * 2 - 1; // −1 … +1
+    return {
+      pos: { x, z: t * H * 0.45 },
+      headingDeg,
+      shipClass,
+    };
+  });
+}
+
+const OPEN_WATER_LINE: ShipClass[] = [
+  ShipClass.FirstRate,
+  ShipClass.ThirdRate,
+  ShipClass.ThirdRate,
+  ShipClass.Frigate,
+];
+
+export const SCENARIOS: ReadonlyArray<Scenario> = [
+  {
+    id: "open-water",
+    name: "Open Water",
+    year: 1805,
+    blurb:
+      "Free play on the open sea: two battle lines square off across the water with a fresh, unpredictable wind. Sandbox your tactics with no coast in sight.",
+    // Fallback only — `randomWind` makes the real wind a fresh random bearing at
+    // each match start.
+    windFromDegrees: 135,
+    randomWind: true,
+    british: {
+      label: "Royal Navy",
+      // Left side, bows east (90°) toward the enemy.
+      ships: line(-W * 0.55, 90, OPEN_WATER_LINE),
+    },
+    enemy: {
+      label: "Enemy Fleet",
+      // Right side, bows west (270°) toward the Royal Navy.
+      ships: line(W * 0.55, 270, OPEN_WATER_LINE),
+    },
+  },
+];
 
 /** Looks up a built-in scenario by id; `undefined` if none match (now always). */
 export function getScenario(id: string): Scenario | undefined {
