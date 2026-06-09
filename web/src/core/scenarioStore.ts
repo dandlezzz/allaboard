@@ -305,11 +305,14 @@ function sanitizeShips(v: unknown): ShipPlacement[] {
     if (!raw || typeof raw !== "object") continue;
     const s = raw as Record<string, unknown>;
     const pos = (s.pos ?? {}) as Record<string, unknown>;
-    ships.push({
+    const ship: ShipPlacement = {
       pos: { x: clamp(num(pos.x, 0), -W, W), z: clamp(num(pos.z, 0), -H, H) },
       headingDeg: num(s.headingDeg, 90),
       shipClass: sanitizeShipClass(s.shipClass),
-    });
+    };
+    const name = str(s.name, "").trim();
+    if (name) ship.name = name.slice(0, 40);
+    ships.push(ship);
   }
   return ships;
 }

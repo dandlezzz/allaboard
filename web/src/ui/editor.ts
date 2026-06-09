@@ -117,9 +117,9 @@ export class Editor {
             <svg class="editor-preview" viewBox="0 0 ${DIAGRAM_VB.w} ${DIAGRAM_VB.h}"
                  preserveAspectRatio="xMidYMid meet" aria-label="Live scenario preview"></svg>
             <div class="editor-status" data-status></div>
-            <div class="editor-inspector" data-inspector hidden></div>
           </div>
           <div class="editor-controls">
+            <div class="editor-inspector" data-inspector hidden></div>
             <section class="editor-section" data-meta></section>
             <section class="editor-section" data-wind></section>
             <section class="editor-section" data-sides></section>
@@ -389,6 +389,19 @@ export class Editor {
     this.inspectorHost.appendChild(head);
 
     const fields = el("div", "inspector-fields");
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "ship-name-input";
+    nameInput.placeholder = "Unnamed";
+    nameInput.maxLength = 40;
+    nameInput.value = ship.name ?? "";
+    nameInput.addEventListener("input", () => {
+      const v = nameInput.value.trimStart();
+      if (v) ship.name = v;
+      else delete ship.name;
+    });
+    fields.appendChild(labeled("Name", nameInput));
 
     const type = document.createElement("select");
     for (const t of SHIP_TYPES) {

@@ -32,6 +32,8 @@ export interface ShipPlacement {
   pos: Vec2;
   headingDeg: number;
   shipClass: ShipClass;
+  /** Optional author-given vessel name (e.g. "HMS Victory"); blank/absent = unnamed. */
+  name?: string;
 }
 
 /**

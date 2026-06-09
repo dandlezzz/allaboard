@@ -1320,7 +1320,8 @@ body.menu-open .range-toggle {
   flex-direction: column;
   gap: 6px;
 }
-.inspector-fields select {
+.inspector-fields select,
+.inspector-fields input {
   flex: 1;
   min-width: 0;
   padding: 4px 6px;
