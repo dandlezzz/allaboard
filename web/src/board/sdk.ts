@@ -75,6 +75,42 @@ export interface BoardPauseResult {
   customButtonId?: string;
 }
 
+/** The bits of `BoardSaveGameMetadata` we actually use (id + description). */
+export interface BoardSaveMeta {
+  id: string;
+  description: string;
+}
+
+/**
+ * The Board save-game persistence surface (`Board.save`), narrowed to the four
+ * methods this app needs. Saves are app-scoped (namespaced by the stable
+ * `appId`) so they survive app reinstalls/relaunches — unlike the WebView's
+ * `localStorage`, which is the bug this wrapper fixes. All calls are async and
+ * reject when the native service is absent (browser), so callers must guard on
+ * `isOnDevice` and/or `try/catch`. See web/AGENTS.md "Save games".
+ */
+export interface BoardSaveApi {
+  /** List all save games for the current app. */
+  list(): Promise<BoardSaveMeta[]>;
+  /** Load a save's raw payload by id. */
+  load(saveId: string): Promise<Uint8Array>;
+  /** Create a new save (max 16MB payload); resolves with its OS-minted id. */
+  create(
+    description: string,
+    data: Uint8Array,
+    playedTime: number,
+    gameVersion: string,
+  ): Promise<BoardSaveMeta>;
+  /** Overwrite an existing save's payload/description. */
+  update(
+    saveId: string,
+    description: string,
+    data: Uint8Array,
+    playedTime: number,
+    gameVersion: string,
+  ): Promise<void>;
+}
+
 export interface BoardLike {
   isOnDevice: boolean;
   input: {
@@ -91,6 +127,8 @@ export interface BoardLike {
   application?: {
     quit(): void;
   };
+  /** Durable, app-scoped key/value-ish persistence (save games). On-device only. */
+  save?: BoardSaveApi;
 }
 
 /**
@@ -136,6 +174,19 @@ interface RawBridge {
   quit(): void;
   showProfileSwitcher?(): void;
   hideProfileSwitcher?(): void;
+  // Async save-game host methods. Each returns a numeric request id and resolves
+  // later via `window.__board.resolve(id, json)`. These are the exact names the
+  // real `@board.fun/web-sdk` `save` module dispatches through the bridge.
+  createSave?(description: string, base64: string, playedTime: number, gameVersion: string): number;
+  loadSave?(saveId: string): number;
+  listSaves?(): number;
+  updateSave?(
+    saveId: string,
+    description: string,
+    base64: string,
+    playedTime: number,
+    gameVersion: string,
+  ): number;
 }
 
 /** The touch push channel injected as `window.boardTouch`. */
@@ -363,6 +414,94 @@ function makeBridgeInput(w: BoardWindow): BoardLike["input"] {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Save-game persistence over the async bridge (mirrors the real SDK's save.ts).
+// ---------------------------------------------------------------------------
+
+/**
+ * Calls an ASYNC @JavascriptInterface host method and returns a Promise. Mirrors
+ * the real SDK's `callAsync`: the host method returns a numeric request id and
+ * the native side later calls `window.__board.resolve(id, json)` (which our
+ * {@link ensureAsyncBridge} already routes through `_pending`).
+ */
+function callAsyncBridge(
+  w: BoardWindow,
+  bridge: RawBridge,
+  method: string,
+  ...args: unknown[]
+): Promise<unknown> {
+  ensureAsyncBridge(w);
+  return new Promise((resolve, reject) => {
+    const fn = (bridge as unknown as Record<string, unknown>)[method];
+    if (typeof fn !== "function") {
+      reject(new Error(`BoardSDK.${method} is not a function`));
+      return;
+    }
+    let id: number;
+    try {
+      id = (fn as (...a: unknown[]) => number).apply(bridge, args);
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    w.__board!._pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+  });
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToUint8(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function makeBridgeSave(w: BoardWindow, bridge: RawBridge): BoardSaveApi {
+  return {
+    async list(): Promise<BoardSaveMeta[]> {
+      const raw = await callAsyncBridge(w, bridge, "listSaves");
+      if (!Array.isArray(raw)) return [];
+      return raw.map((m) => {
+        const o = (m ?? {}) as Record<string, unknown>;
+        return { id: String(o.id ?? ""), description: String(o.description ?? "") };
+      });
+    },
+    async load(saveId: string): Promise<Uint8Array> {
+      const res = (await callAsyncBridge(w, bridge, "loadSave", saveId)) as { data?: unknown };
+      return base64ToUint8(typeof res?.data === "string" ? res.data : "");
+    },
+    async create(description, data, playedTime, gameVersion): Promise<BoardSaveMeta> {
+      const raw = (await callAsyncBridge(
+        w,
+        bridge,
+        "createSave",
+        description,
+        uint8ToBase64(data),
+        playedTime,
+        gameVersion,
+      )) as Record<string, unknown>;
+      return { id: String(raw?.id ?? ""), description: String(raw?.description ?? description) };
+    },
+    async update(saveId, description, data, playedTime, gameVersion): Promise<void> {
+      await callAsyncBridge(
+        w,
+        bridge,
+        "updateSave",
+        saveId,
+        description,
+        uint8ToBase64(data),
+        playedTime,
+        gameVersion,
+      );
+    },
+  };
+}
+
 /** Builds a `BoardLike` that delegates to the real low-level bridge globals. */
 function bridgeBoard(w: BoardWindow, bridge: RawBridge): BoardLike {
   return {
@@ -374,6 +513,7 @@ function bridgeBoard(w: BoardWindow, bridge: RawBridge): BoardLike {
         bridge.quit();
       },
     },
+    save: makeBridgeSave(w, bridge),
   };
 }
 

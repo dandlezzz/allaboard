@@ -20,6 +20,7 @@ import { createInputAdapter } from "./board/input";
 import { loadBoard } from "./board/sdk";
 import { PauseMenu } from "./board/pauseMenu";
 import { preloadArt } from "./rendering/assets";
+import { hydrateCustomScenarios } from "./core/scenarioStore";
 
 async function main(): Promise<void> {
   const canvas = getElement<HTMLCanvasElement>("game-canvas");
@@ -47,6 +48,12 @@ async function main(): Promise<void> {
     onBegin: (scenarioId, playerFaction, opponent) =>
       game.configureMatch(scenarioId, playerFaction, opponent),
   });
+
+  // On device, pull custom scenarios out of the durable Board.save store and
+  // refresh the gallery once they arrive (the Menu subscribed in its ctor). The
+  // menu renders immediately from the synchronous localStorage cache; this only
+  // adds/repairs the durable list. Fire-and-forget — never blocks startup.
+  void hydrateCustomScenarios();
   game = new Game(renderer, hud, onDevice);
 
   // Per-player firing-range overlay toggles (one corner button per fleet). Each

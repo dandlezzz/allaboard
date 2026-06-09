@@ -19,6 +19,7 @@ import {
   deleteCustomScenario,
   blankScenario,
   duplicateScenario,
+  subscribeScenarios,
 } from "../core/scenarioStore";
 import { Faction, accentCss } from "../core/faction";
 import { scenarioDiagram } from "./diagram";
@@ -90,6 +91,10 @@ export class Menu {
   constructor(private readonly callbacks: MenuCallbacks) {
     this.buildGallery();
     this.buildOpponents();
+
+    // Rebuild the gallery when the custom-scenario list changes out from under
+    // us — notably when the async Board.save hydration lands on device.
+    subscribeScenarios(() => this.buildGallery());
 
     this.sideBack.addEventListener("click", () => this.showScreen("scenario"));
     this.confirmButton.addEventListener("click", () => this.begin());
