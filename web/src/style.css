@@ -273,6 +273,13 @@ body.show-banner #banner {
   max-width: 1180px;
 }
 
+/* The choose-your-command screen runs a wide two-column layout, so let it
+ * claim much more horizontal space than the scenario gallery — trading the
+ * how-to panel's height for width keeps the whole screen inside the viewport. */
+#screen-side {
+  max-width: min(1720px, 98vw);
+}
+
 .menu-screen[hidden] {
   display: none;
 }
@@ -799,7 +806,7 @@ body.menu-open .range-toggle {
   flex-direction: column;
   align-items: stretch;
   gap: clamp(8px, 1.6vh, 16px);
-  flex: 1 1 360px;
+  flex: 0 1 420px;
   min-width: 0;
   max-width: 460px;
 }
@@ -809,17 +816,19 @@ body.menu-open .range-toggle {
 }
 
 .command-howto {
-  flex: 1 1 480px;
+  flex: 1 1 900px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: clamp(6px, 1.2vh, 12px);
 }
 
-/* The shared #howto grid is 3-up in the full-width "?" modal but only 2-up when
- * docked in the narrower command column. */
+/* The how-to panel shares the screen with the selection column, so it gets the
+ * lion's share of the width and lays the six cards out 3-up — two short rows
+ * instead of three tall ones — so the screen fits the viewport without
+ * scrolling vertically. */
 .command-howto #howto {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 
 /* The six illustrated cards: in a 3×2 grid, framed as engraved plates on the
