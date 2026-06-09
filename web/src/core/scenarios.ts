@@ -18,11 +18,11 @@
 // capped at ≤12 per side.
 
 import * as Config from "./config";
-import { ShipClass } from "../ships/shipClass";
+import { ShipClass, shipStats } from "../ships/shipClass";
+import { headingToVector } from "./nav";
 import type { Vec2 } from "./vec";
 
 const W = Config.ArenaHalfX;
-const H = Config.ArenaHalfZ;
 
 /**
  * One placed ship: where it sits, which way its bow points, and its class
@@ -80,29 +80,46 @@ export interface Scenario {
 
 // ---------------------------------------------------------------------------
 // Built-in battles. "Open Water" is the free-play / sandbox setup that mirrors
-// the game's old hardcoded default match: a flagship-led line per side, mixed
-// classes, and a wind randomised at each start. Custom scenarios from the editor
-// are layered on top of this list by `scenarioStore`.
+// the game's old hardcoded default match: a flagship-led LINE AHEAD column per
+// side (ships bow-to-stern in single file), mixed classes, and a wind randomised
+// at each start. Custom scenarios from the editor are layered on top by
+// `scenarioStore`.
 // ---------------------------------------------------------------------------
 
-/** Builds one side's line: ships spread evenly along Z near `x`, all sharing
- *  `headingDeg` (bows pointed at the opposing fleet). Index 0 (the flagship)
- *  leads. The even spread auto-scales with the fleet size, so the per-ship gap
- *  shrinks as the line grows (12/side still sits well inside the arena: the
- *  ships span ±0.45H ≈ ±228 world units within the ±506 short half, and each
- *  ship's beam ~14 is far smaller than the ~41-unit gap between neighbours). */
-function line(x: number, headingDeg: number, classes: ShipClass[]): ShipPlacement[] {
+/** Half the on-water hull length (world units) of a placed ship's class. */
+function shipHalfLength(c: ShipClass): number {
+  return shipStats(c).length / 2;
+}
+
+/** Builds one side's LINE AHEAD column: ships in single file at a fixed `x`,
+ *  spread along the Z (short) axis and all sharing `headingDeg` so every bow
+ *  points along the line at the stern of the ship ahead — a true bow-to-stern
+ *  battle line. `headingDeg` must be 0 (sailing north, bow +Z) or 180 (sailing
+ *  south, bow −Z); index 0 is the flagship leading the van. Neighbour spacing is
+ *  the two hulls' half-lengths plus `Config.ColumnGap`, so hulls never overlap
+ *  bow-to-stern whatever the class mix, and the file is centred on z = 0.
+ *
+ *  This 12-ship column spans ≈ 766 world units centre-to-centre (≈ 817 tip-to-
+ *  tip), comfortably inside the ±506 short half-extent (±~94 units of margin). */
+function column(x: number, headingDeg: number, classes: ShipClass[]): ShipPlacement[] {
   const n = classes.length;
-  return classes.map((shipClass, i) => {
-    // Even spread across the short axis, centred on z = 0, so each side reads as
-    // a tidy battle line (t runs −1 … +1, scaled by 0.45H).
-    const t = n === 1 ? 0 : (i / (n - 1)) * 2 - 1; // −1 … +1
-    return {
-      pos: { x, z: t * H * 0.45 },
-      headingDeg,
-      shipClass,
-    };
-  });
+  // Cumulative centre offset of each ship BEHIND the van (index 0), summing each
+  // adjacent pair's half-lengths plus the fixed inter-hull gap.
+  const behind: number[] = new Array(n);
+  behind[0] = 0;
+  for (let i = 1; i < n; i++) {
+    behind[i] =
+      behind[i - 1] + shipHalfLength(classes[i - 1]) + Config.ColumnGap + shipHalfLength(classes[i]);
+  }
+  const mid = behind[n - 1] / 2; // centre the file on z = 0
+  // +1 when the bow points north (heading 0), −1 when south (heading 180): the
+  // van sits at the front in the travel direction, the rear ships trail behind.
+  const bowZ = headingToVector(headingDeg).z;
+  return classes.map((shipClass, i) => ({
+    pos: { x, z: (mid - behind[i]) * bowZ },
+    headingDeg,
+    shipClass,
+  }));
 }
 
 // 12 ships per side (24 total): a mixed line of 3 First Rates (flagships in the
@@ -184,13 +201,14 @@ export const SCENARIOS: ReadonlyArray<Scenario> = [
     randomWind: true,
     british: {
       label: "Royal Navy",
-      // Left side, bows east (90°) toward the enemy.
-      ships: line(-W * 0.55, 90, OPEN_WATER_LINE),
+      // Left column, in line ahead sailing NORTH (bows +Z); flagship leads the van.
+      ships: column(-W * 0.55, 0, OPEN_WATER_LINE),
     },
     enemy: {
       label: "Enemy Fleet",
-      // Right side, bows west (270°) toward the Royal Navy.
-      ships: line(W * 0.55, 270, OPEN_WATER_LINE),
+      // Right column, in line ahead sailing SOUTH (bows −Z) on the opposite course
+      // — the two battle lines pass each other, broadsides bearing across the gap.
+      ships: column(W * 0.55, 180, OPEN_WATER_LINE),
     },
   },
   TRAFALGAR,
