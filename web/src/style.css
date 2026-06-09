@@ -617,14 +617,15 @@ body.phase-setup #setup-status {
   font-size: 24px;
 }
 
-/* ===== Per-player firing-range overlay toggles (bottom corners) ========== */
+/* ===== Per-player firing-range overlay toggles (top corners) ============= */
 /* Each fleet gets its own toggle in the corner nearest its start — British on
- * the left, Franco-Spanish on the right (left of the "?" button) — controlling
- * only that side's range fans. */
+ * the left, Franco-Spanish on the right — controlling only that side's range
+ * fans. Anchored at top: 120px to clear the top-left Battles/Rematch stack and
+ * the top-right Board hardware menu button. */
 .range-toggle {
   position: fixed;
   z-index: 35;
-  bottom: 16px;
+  top: 120px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -652,7 +653,7 @@ body.phase-setup #setup-status {
 }
 
 #range-toggle-franco {
-  right: 72px;
+  right: 16px;
 }
 
 /* The faction-coloured chip; fills solid and the button gains an accent ring
