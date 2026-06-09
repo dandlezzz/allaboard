@@ -106,7 +106,7 @@ export function pointOfSailColor(headingDeg: number, wind: Wind): number {
  *   In Irons     0°–NoGoAngle(42°)   InIronsFactor → 0.30   (slowest, no-go)
  *   Close-Hauled 42°–60°             0.30 → 0.50
  *   Close Reach  60°–80°             0.50 → 0.70
- *   Beam Reach   80°–100°            0.70 → 0.90
+ *   Beam Reach   80°–100°            0.70 → 0.88 → 0.90    (bulged at 90°)
  *   Broad Reach  100°–150°           0.90 → 1.00            (fastest)
  *   Running      150°–180°           1.00 → 0.85
  */
@@ -135,10 +135,14 @@ export function pointOfSailFactor(offWindAngle: number): PointOfSailResult {
   }
 
   if (offWindAngle < 100) {
-    return {
-      pointOfSail: "Beam Reach",
-      factor: lerp(0.7, 0.9, inverseLerp(80, 100, offWindAngle)),
-    };
+    // Bulged at the true beam (90°): ships hold more speed perpendicular to the
+    // wind. Endpoints (0.70 at 80°, 0.90 at 100°) match the neighbouring bands,
+    // so the curve stays continuous.
+    const factor =
+      offWindAngle < 90
+        ? lerp(0.7, 0.88, inverseLerp(80, 90, offWindAngle))
+        : lerp(0.88, 0.9, inverseLerp(90, 100, offWindAngle));
+    return { pointOfSail: "Beam Reach", factor };
   }
 
   if (offWindAngle < 150) {
