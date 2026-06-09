@@ -86,12 +86,15 @@ export interface Scenario {
 
 /** Builds one side's line: ships spread evenly along Z near `x`, all sharing
  *  `headingDeg` (bows pointed at the opposing fleet). Index 0 (the flagship)
- *  leads. Mirrors the class mix of the old free-play default, scaled to 4/side. */
+ *  leads. The even spread auto-scales with the fleet size, so the per-ship gap
+ *  shrinks as the line grows (12/side still sits well inside the arena: the
+ *  ships span ±0.45H ≈ ±228 world units within the ±506 short half, and each
+ *  ship's beam ~14 is far smaller than the ~41-unit gap between neighbours). */
 function line(x: number, headingDeg: number, classes: ShipClass[]): ShipPlacement[] {
   const n = classes.length;
   return classes.map((shipClass, i) => {
-    // Even spread across the short axis, centred on z = 0 (e.g. 4 ships →
-    // −0.45H, −0.15H, +0.15H, +0.45H), so each side reads as a tidy battle line.
+    // Even spread across the short axis, centred on z = 0, so each side reads as
+    // a tidy battle line (t runs −1 … +1, scaled by 0.45H).
     const t = n === 1 ? 0 : (i / (n - 1)) * 2 - 1; // −1 … +1
     return {
       pos: { x, z: t * H * 0.45 },
@@ -101,10 +104,21 @@ function line(x: number, headingDeg: number, classes: ShipClass[]): ShipPlacemen
   });
 }
 
+// 12 ships per side (24 total): a mixed line of 3 First Rates (flagships in the
+// van, centre, and rear), 6 Third Rates (the ships of the line), and 3 Frigates
+// (scouts) — the 1:2:1 class mix of the old 4-ship free-play default, scaled ×3.
 const OPEN_WATER_LINE: ShipClass[] = [
-  ShipClass.FirstRate,
+  ShipClass.FirstRate, // flagship leads the van
   ShipClass.ThirdRate,
   ShipClass.ThirdRate,
+  ShipClass.Frigate,
+  ShipClass.ThirdRate,
+  ShipClass.FirstRate, // centre flagship
+  ShipClass.ThirdRate,
+  ShipClass.ThirdRate,
+  ShipClass.Frigate,
+  ShipClass.ThirdRate,
+  ShipClass.FirstRate, // rear flagship
   ShipClass.Frigate,
 ];
 

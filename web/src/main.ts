@@ -14,6 +14,7 @@
 import { Renderer } from "./rendering/renderer";
 import { Hud } from "./ui/hud";
 import { Menu } from "./ui/menu";
+import { StartScreen } from "./ui/startScreen";
 import { RangeToggle } from "./ui/rangeToggle";
 import { Game } from "./core/game";
 import { createInputAdapter } from "./board/input";
@@ -72,10 +73,14 @@ async function main(): Promise<void> {
 
   game.start();
 
-  // Open the scenario menu over the freshly-spawned default match; the player
-  // must choose a battle to begin (the menu is dismissible only after the first
-  // match starts, via its ✕ / the corner Battles button).
-  menu.open();
+  // Launch START SCREEN: the existing "How to Play" overlay is shown first. The
+  // player dismisses it by PLACING THEIR PIECE on the board (a Board contact on
+  // device; a pointer tap in the browser preview), which reveals a "Begin
+  // Battle" button. Tapping it opens the scenario menu — the normal path into a
+  // match (pick battle → side → opponent → Begin). The "?" help button keeps
+  // reopening the same content later.
+  const startScreen = new StartScreen(() => menu.open());
+  void startScreen.begin();
 
   const disposeInput = await createInputAdapter(canvas, (samples) =>
     game.onPointerSamples(samples),

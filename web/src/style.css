@@ -779,6 +779,59 @@ body.menu-open .range-toggle {
   color: var(--ink);
 }
 
+/* ===== Start-screen gate (how-to-play as the launch screen) ============== */
+/* The place-your-piece prompt + the "Begin Battle" button sit centred beneath
+ * the heading. Only visible while the overlay is acting as the start screen
+ * (toggled by StartScreen); the "?" help modal keeps #howto-start hidden. */
+#howto-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 1.2vh, 12px);
+  margin-bottom: clamp(8px, 1.6vh, 16px);
+}
+
+#howto-start[hidden] {
+  display: none;
+}
+
+#howto-start-prompt {
+  text-align: center;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(14px, 2vh, 19px);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--ink-soft);
+  animation: howto-start-pulse 1.8s ease-in-out infinite;
+}
+
+#howto-start-prompt[hidden] {
+  display: none;
+}
+
+#howto-start-btn[hidden] {
+  display: none;
+}
+
+@keyframes howto-start-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* While the start screen is up, hide the persistent corner chrome and in-game
+ * controls — the only ways forward are placing a piece then tapping Begin. */
+body.start-screen #battles-toggle,
+body.start-screen #howto-toggle,
+body.start-screen #dev-controls,
+body.start-screen .range-toggle {
+  display: none;
+}
+
 /* The six illustrated cards: in a 3×2 grid, framed as engraved plates on the
  * parchment. The card ART (inline SVG) keeps its in-game dark palette so it
  * mirrors the real controls; only the surrounding plate is re-skinned. */

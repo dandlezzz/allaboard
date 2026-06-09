@@ -39,6 +39,18 @@
         <div id="howto-panel">
           <button id="howto-close" type="button" aria-label="Close how to play">×</button>
           <div class="howto-heading">How to Play</div>
+
+          <!-- Start-screen gate (only shown when this overlay is the launch
+               screen). The player dismisses the how-to-play by PLACING THEIR
+               PIECE on the board (a Board contact on device; a tap in the
+               browser preview); that swaps the prompt for the "Begin Battle"
+               button, which starts the game. Hidden whenever the overlay is
+               reopened later via the "?" help button. -->
+          <div id="howto-start" hidden>
+            <div id="howto-start-prompt">Place your piece on the board to begin…</div>
+            <button id="howto-start-btn" type="button" class="chart-btn" hidden>Begin Battle ›</button>
+          </div>
+
           <div id="howto" role="list" aria-label="How to play">
           <figure class="howto-card" role="listitem">
             <!-- Points of Sail: the in-game point-of-sail speed gauge (the same
