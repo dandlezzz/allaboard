@@ -37,6 +37,9 @@ function escapeHtml(s: string): string {
 export interface MenuCallbacks {
   /** Start a match: chosen battle, the side the player commands, the opponent. */
   onBegin: (scenarioId: string, playerFaction: Faction, opponent: Opponent) => void;
+  /** Re-arm the in-battle tutorial hints ("Replay battle hints" in the "?"
+   *  overlay): they restart immediately mid-battle, or on the next battle. */
+  onReplayHints: () => void;
 }
 
 interface OpponentOption {
@@ -115,6 +118,10 @@ export class Menu {
     this.battlesToggle.addEventListener("click", () => this.open());
     this.howtoToggle.addEventListener("click", () => this.toggleHowTo());
     this.howtoClose.addEventListener("click", () => this.setHowTo(false));
+    el<HTMLButtonElement>("howto-replay-hints").addEventListener("click", () => {
+      this.setHowTo(false); // drop back to the field so the hints are visible
+      this.callbacks.onReplayHints();
+    });
     this.howtoOverlay.addEventListener("click", (e) => {
       if (e.target === this.howtoOverlay) this.setHowTo(false); // click the scrim to close
     });

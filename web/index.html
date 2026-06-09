@@ -33,6 +33,18 @@
       <!-- In-canvas placement prompt (shown during the Setup phase) -->
       <div id="setup-status">Place your command piece to begin…</div>
 
+      <!-- In-battle objective banner (every battle start) + first-battle
+           tutorial hint strip, both driven by ui/tutorial.ts. -->
+      <div id="objective-banner" aria-live="polite">
+        <div id="objective-title">Sink the Enemy Fleet</div>
+        <div id="objective-sub"></div>
+      </div>
+      <div id="tutorial-hint" aria-live="polite">
+        <span id="tutorial-step" aria-hidden="true"></span>
+        <span id="tutorial-text"></span>
+        <button id="tutorial-skip" type="button">Skip hints</button>
+      </div>
+
       <!-- How to play — the six illustrated cards. Their permanent home is the
            "choose your command" menu screen (moved there at runtime into
            #side-howto-slot); the corner "?" button re-parents this same node
@@ -463,6 +475,12 @@
             </figcaption>
           </figure>
           </div>
+          </div>
+
+          <div class="howto-foot">
+            <button id="howto-replay-hints" type="button" class="chart-btn small">
+              Replay battle hints
+            </button>
           </div>
         </div>
       </div>

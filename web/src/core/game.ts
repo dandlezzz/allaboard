@@ -13,7 +13,7 @@ import { CombatSystem } from "../combat/combatSystem";
 import { FleetAI, AIPersona } from "../ai/fleetAI";
 import { SailSetting } from "../ships/sail";
 import { nextAmmo } from "../ships/ammo";
-import { Ship, ShipState } from "../ships/ship";
+import { Ship, ShipState, BroadsideSide } from "../ships/ship";
 import { shipStats } from "../ships/shipClass";
 import { ShipView } from "../rendering/shipView";
 import type { Renderer } from "../rendering/renderer";
@@ -21,6 +21,7 @@ import { buildScene } from "../rendering/scene";
 import { type Scenario, type ShipPlacement } from "./scenarios";
 import { resolveScenario } from "./scenarioStore";
 import type { Hud, Opponent } from "../ui/hud";
+import type { Tutorial } from "../ui/tutorial";
 import type { PointerSample } from "../board/input";
 import type { PauseMenu } from "../board/pauseMenu";
 
@@ -227,6 +228,11 @@ export class Game {
   // on a Board it's set before `start()` so phase transitions can drive it.
   private pauseMenu: PauseMenu | null = null;
 
+  // In-battle onboarding (objective banner + first-battle hints). The game
+  // drives it across phase transitions and notifies it of the player actions
+  // that advance the hint steps (steer / trim sail / broadside fired).
+  private tutorial: Tutorial | null = null;
+
   constructor(renderer: Renderer, hud: Hud, onDevice = false) {
     this.renderer = renderer;
     this.hud = hud;
@@ -236,6 +242,11 @@ export class Game {
   /** Attaches the OS pause-overlay controller (no-op driver in the browser). */
   setPauseMenu(pauseMenu: PauseMenu): void {
     this.pauseMenu = pauseMenu;
+  }
+
+  /** Attaches the in-battle onboarding (objective banner + tutorial hints). */
+  setTutorial(tutorial: Tutorial): void {
+    this.tutorial = tutorial;
   }
 
   /** Turns the firing-range overlay on/off for ONE side's ships (per-player
@@ -301,7 +312,12 @@ export class Game {
       this.tickAI();
       this.tickShips(dt);
       this.separateShips();
+      // While the tutorial's broadside step is up, diff each human ship's
+      // ready→fired edge across the gunnery tick (firing is automatic, so this
+      // is the only way to see "the player's guns just spoke").
+      const readyBefore = this.tutorial?.wants("fire") ? this.snapshotBroadsideReady() : null;
       this.combat.tick(this.ships, this.renderer);
+      if (readyBefore && this.anyBroadsideFired(readyBefore)) this.tutorial?.notify("fire");
       this.cullSunkShips();
       this.checkWinCondition();
     } else if (this.phase === GamePhase.GameOver) {
@@ -349,7 +365,9 @@ export class Game {
         continue;
       }
 
-      // Playing.
+      // Playing. Any fresh contact dismisses the objective banner.
+      if (s.phase === "began") this.tutorial?.onInteraction();
+
       // A physical Piece (Glyph) drives the Baton of Command lifecycle. Gate on
       // glyphId > 0 so a finger reported without a Piece type never trips piece
       // logic (per the Piece-interaction guide); such fingers fall through to
@@ -393,6 +411,7 @@ export class Game {
     this.sailDragContact = null;
     this.sailDragFaction = null;
     this.renderer.hideCoursePreview();
+    this.tutorial?.onBattleEnd();
     this.spawnAllFleets();
     // No live match yet, but keep a pause context registered so the hardware
     // menu button (and its Quit) still works on the start screen — just without
@@ -467,6 +486,8 @@ export class Game {
       // Battle is live: register the in-match pause context so the hardware menu
       // button offers Restart / Quit on a Board.
       this.pauseMenu?.enterPlaying();
+      // Objective banner every battle; step-by-step hints the first time only.
+      this.tutorial?.onBattleStart();
     }
   }
 
@@ -581,6 +602,7 @@ export class Game {
       // intentional turn begins steering (avoids Piece jitter creeping the course).
       if (angleDifference(orientationDeg, ref.startDeg) < Config.BatonSteerToleranceDeg) return;
       ref.steering = true;
+      this.tutorial?.notify("steer");
     }
     // Touched + rotated → drive EVERY commanded ship onto the baton's ABSOLUTE
     // heading: aim the held baton where the fleet should sail and a scattered
@@ -690,6 +712,7 @@ export class Game {
     const t = clamp01((world.z - (sail.z - sail.halfH)) / (2 * sail.halfH));
     const setting = Math.round(t * 3) as SailSetting; // 0..3, snap to nearest
     for (const cmd of alive) cmd.setSail(setting);
+    this.tutorial?.notify("sail");
   }
 
   // ---- Baton lifecycle: mouse emulation (browser) -----------------------
@@ -761,6 +784,7 @@ export class Game {
           const heading = vectorToHeading(dir);
           color = pointOfSailColor(heading, this.wind);
           for (const cmd of alive) cmd.setTargetHeading(heading);
+          this.tutorial?.notify("steer");
         }
         this.renderer.showCoursePreview(
           alive.map((c) => c.position),
@@ -1056,6 +1080,30 @@ export class Game {
     }
   }
 
+  /** Per-ship broadside-ready flags for every alive HUMAN ship, captured just
+   *  before the gunnery tick (tutorial broadside-fired detection). */
+  private snapshotBroadsideReady(): Map<Ship, [boolean, boolean]> {
+    const out = new Map<Ship, [boolean, boolean]>();
+    for (const ship of this.ships) {
+      if (!ship.isAlive || !this.isHuman(ship.faction)) continue;
+      out.set(ship, [
+        ship.isBroadsideReady(BroadsideSide.Port),
+        ship.isBroadsideReady(BroadsideSide.Starboard),
+      ]);
+    }
+    return out;
+  }
+
+  /** True if any snapshot ship's broadside flipped ready→reloading across the
+   *  gunnery tick — i.e. a player broadside just fired. */
+  private anyBroadsideFired(before: Map<Ship, [boolean, boolean]>): boolean {
+    for (const [ship, [port, starboard]] of before) {
+      if (port && !ship.isBroadsideReady(BroadsideSide.Port)) return true;
+      if (starboard && !ship.isBroadsideReady(BroadsideSide.Starboard)) return true;
+    }
+    return false;
+  }
+
   private cullSunkShips(): void {
     for (let i = this.ships.length - 1; i >= 0; i--) {
       const ship = this.ships[i];
@@ -1079,6 +1127,7 @@ export class Game {
     // Match is over: keep the menu live so the player can Restart (new battle)
     // or Quit straight from the overlay.
     this.pauseMenu?.enterGameOver();
+    this.tutorial?.onBattleEnd();
     this.winner = britishAfloat
       ? Faction.British
       : francoAfloat

@@ -15,6 +15,7 @@ import { Renderer } from "./rendering/renderer";
 import { Hud } from "./ui/hud";
 import { Menu } from "./ui/menu";
 import { RangeToggle } from "./ui/rangeToggle";
+import { Tutorial } from "./ui/tutorial";
 import { Game } from "./core/game";
 import { createInputAdapter } from "./board/input";
 import { loadBoard } from "./board/sdk";
@@ -42,11 +43,16 @@ async function main(): Promise<void> {
   // construction.
   let game: Game;
   const hud = new Hud(() => game.restart());
+  // In-battle onboarding: the objective banner at every battle start plus the
+  // first-battle hint sequence (mouse wording in the browser, Piece wording on
+  // a Board). Re-armable from the "?" overlay's "Replay battle hints" button.
+  const tutorial = new Tutorial(onDevice);
   // The antique-chart menu drives scenario / side / opponent selection; it sits
   // on top of the live canvas and starts a match via configureMatch.
   const menu = new Menu({
     onBegin: (scenarioId, playerFaction, opponent) =>
       game.configureMatch(scenarioId, playerFaction, opponent),
+    onReplayHints: () => tutorial.replay(),
   });
 
   // On device, pull custom scenarios out of the durable Board.save store and
@@ -55,6 +61,7 @@ async function main(): Promise<void> {
   // adds/repairs the durable list. Fire-and-forget — never blocks startup.
   void hydrateCustomScenarios();
   game = new Game(renderer, hud, onDevice);
+  game.setTutorial(tutorial);
 
   // Per-player firing-range overlay toggles (one corner button per fleet). Each
   // flips its own side's range fans on/off independently.
