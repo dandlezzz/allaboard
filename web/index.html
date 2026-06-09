@@ -513,6 +513,15 @@
       <button id="reset-button" type="button">Rematch</button>
     </div>
 
+    <!-- Per-player firing-range overlay toggles, one per fleet, placed in the
+         bottom corner nearest that side's start (British/left, Franco/right). -->
+    <button id="range-toggle-british" type="button" class="range-toggle" aria-label="Toggle Royal Navy gun range">
+      <i class="range-swatch" aria-hidden="true"></i>Range
+    </button>
+    <button id="range-toggle-franco" type="button" class="range-toggle" aria-label="Toggle enemy gun range">
+      <i class="range-swatch" aria-hidden="true"></i>Range
+    </button>
+
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

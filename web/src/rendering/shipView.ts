@@ -55,6 +55,11 @@ const C_BAR_BG = 0x0d0d12;
 const C_BAR_HULL = 0xd94033;
 const C_BAR_RIG = 0x59cc66;
 
+// Firing-range overlay colours: cyan for the broadside (beam) arcs, amber for
+// the narrower chase-gun (fore/aft) arcs, so the two batteries read apart.
+const C_RANGE_BROADSIDE = 0x49c8ff;
+const C_RANGE_CHASE = 0xffb24a;
+
 // Ammo colour key: grey = round shot, green = bar shot.
 function ammoColor(ammo: AmmoType): number {
   switch (ammo) {
@@ -95,6 +100,14 @@ export class ShipView implements ShipViewHooks {
   private stripeGfx = new Graphics();
   private flashGfx = new Graphics();
   private flagGfx = new Graphics();
+
+  // Firing-range overlay (toggled per-player): translucent fans showing where
+  // this ship's guns can reach — broadside arcs abeam (port/starboard) and the
+  // narrower chase-gun arcs fore/aft. Drawn flat on the sea BENEATH the hull and
+  // built once (it only depends on the class's gunRange + fixed firing arcs);
+  // because it lives in the heading-rotated container it tracks the ship's
+  // heading for free. Hidden until the owning player turns range display on.
+  private rangeGfx = new Graphics();
 
   private sailGroup = new Container();
   private sails: SailPart[] = [];
@@ -163,7 +176,9 @@ export class ShipView implements ShipViewHooks {
 
     // Z-order: flat-on-sea rings/controls beneath the hull, then the hull
     // (textured sprite or procedural layers), then faction stripe + stern
-    // pennant, with status bars on top.
+    // pennant, with status bars on top. The range overlay sits lowest of all so
+    // its translucent fans never wash out the hull or command bubble.
+    this.container.addChild(this.rangeGfx);
     this.container.addChild(this.commandGfx);
     this.container.addChild(this.controlsContainer);
 
@@ -205,6 +220,7 @@ export class ShipView implements ShipViewHooks {
 
     this.buildFlag(ship.stats);
     this.buildCommandBubble(ship.stats);
+    this.buildRangeOverlay(ship.stats);
     this.buildControlButtons(ship.stats);
     this.buildStatusBars(ship.stats);
     this.buildStatusIcons(ship.stats);
@@ -428,6 +444,74 @@ export class ShipView implements ShipViewHooks {
     this.commandGfx.circle(0, 0, r).fill({ color: 0xffffff, alpha: 0.12 });
     this.commandGfx.circle(0, 0, r + band / 2).stroke({ width: band, color: 0xffffff });
     this.commandGfx.visible = false;
+  }
+
+  // ---- Firing-range overlay ----------------------------------------------
+
+  /**
+   * Builds the static firing-range fans for this ship, oriented to its LOCAL
+   * axes (bow = +Z, starboard = +X) so the heading-rotated container keeps them
+   * aligned with the hull at no per-frame cost. Geometry mirrors CombatSystem
+   * exactly: a broadside reaches `gunRange` within `BroadsideArcHalfAngle` of
+   * each beam normal, and the chase guns reach the SAME `gunRange` but only
+   * within the tighter `ChaseArcHalfAngle` of the bow (and stern, if a second
+   * chaser is fitted). Broadside fans and chase fans are colour-coded so the two
+   * batteries read apart. Hidden until {@link setRangeOverlay} reveals it.
+   */
+  private buildRangeOverlay(stats: ShipStats): void {
+    const g = this.rangeGfx;
+    g.clear();
+    const range = stats.gunRange;
+
+    // Broadside arcs abeam to port and starboard.
+    this.drawRangeWedge(g, { x: 1, z: 0 }, Config.BroadsideArcHalfAngle, range, C_RANGE_BROADSIDE);
+    this.drawRangeWedge(g, { x: -1, z: 0 }, Config.BroadsideArcHalfAngle, range, C_RANGE_BROADSIDE);
+
+    // Chase arcs fore (bow) and aft (stern) — only those the ship actually fits
+    // (bow chaser needs chaseGuns > 0, stern chaser chaseGuns > 1), matching the
+    // bow/stern firing conditions in CombatSystem.tryFireChase.
+    if (stats.chaseGuns > 0) {
+      this.drawRangeWedge(g, { x: 0, z: 1 }, Config.ChaseArcHalfAngle, range, C_RANGE_CHASE);
+    }
+    if (stats.chaseGuns > 1) {
+      this.drawRangeWedge(g, { x: 0, z: -1 }, Config.ChaseArcHalfAngle, range, C_RANGE_CHASE);
+    }
+
+    g.visible = false;
+  }
+
+  /**
+   * Draws one filled + outlined range wedge: a fan of half-angle `halfDeg` about
+   * the (ship-local) unit direction `center`, out to `radius`. Points are swept
+   * in the ship's local XZ frame and mapped to Pixi-local pixels via `lp` so the
+   * fan rotates with the heading-rotated container.
+   */
+  private drawRangeWedge(
+    g: Graphics,
+    center: Vec2,
+    halfDeg: number,
+    radius: number,
+    color: number,
+  ): void {
+    const half = halfDeg * Deg2Rad;
+    const steps = Math.max(8, Math.ceil(halfDeg / 4)) * 2;
+    const pts: number[] = [0, 0]; // wedge apex at the ship
+    for (let i = 0; i <= steps; i++) {
+      const a = -half + (i / steps) * (2 * half);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      // Rotate `center` by `a` in the XZ plane, scale to range, map Z → -Y.
+      const x = (center.x * ca - center.z * sa) * radius;
+      const z = (center.x * sa + center.z * ca) * radius;
+      pts.push(x, -z);
+    }
+    g.poly(pts).fill({ color, alpha: 0.07 });
+    g.poly(pts).stroke({ width: 0.55 * Config.ShipScale, color, alpha: 0.5 });
+  }
+
+  /** Shows or hides this ship's firing-range overlay (per-player toggle). */
+  setRangeOverlay(visible: boolean): void {
+    this.rangeGfx.visible = visible;
   }
 
   // ---- Control buttons ---------------------------------------------------
@@ -851,6 +935,7 @@ export class ShipView implements ShipViewHooks {
     this.setCommanded(false, Faction.Neutral);
     this.statusBars.visible = false;
     this.controlsContainer.visible = false;
+    this.rangeGfx.visible = false;
     this.syncTransform();
     this.container.alpha = lerp(1, 0.15, t);
     this.container.scale.set(lerp(1, 0.3, t));

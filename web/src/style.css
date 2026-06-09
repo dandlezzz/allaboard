@@ -617,6 +617,70 @@ body.phase-setup #setup-status {
   font-size: 24px;
 }
 
+/* ===== Per-player firing-range overlay toggles (bottom corners) ========== */
+/* Each fleet gets its own toggle in the corner nearest its start — British on
+ * the left, Franco-Spanish on the right (left of the "?" button) — controlling
+ * only that side's range fans. */
+.range-toggle {
+  position: fixed;
+  z-index: 35;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  appearance: none;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1.5px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: 0 6px 16px rgba(30, 18, 6, 0.3);
+}
+
+.range-toggle:active {
+  transform: translateY(1px);
+}
+
+#range-toggle-british {
+  left: 16px;
+}
+
+#range-toggle-franco {
+  right: 72px;
+}
+
+/* The faction-coloured chip; fills solid and the button gains an accent ring
+ * once that side's range overlay is on. */
+.range-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--accent, var(--rule));
+  background: transparent;
+}
+
+.range-toggle.active {
+  box-shadow:
+    0 0 0 2px var(--accent, var(--rule)),
+    0 6px 16px rgba(30, 18, 6, 0.3);
+}
+
+.range-toggle.active .range-swatch {
+  background: var(--accent, var(--rule));
+}
+
+/* Hidden while the chart menu is open (the field is covered). */
+body.menu-open .range-toggle {
+  display: none;
+}
+
 /* In-game Rematch button — small, top-left, stacked beneath the Battles
  * button. Hidden during Setup / menu. */
 #dev-controls {

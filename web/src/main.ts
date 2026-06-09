@@ -14,6 +14,7 @@
 import { Renderer } from "./rendering/renderer";
 import { Hud } from "./ui/hud";
 import { Menu } from "./ui/menu";
+import { RangeToggle } from "./ui/rangeToggle";
 import { Game } from "./core/game";
 import { createInputAdapter } from "./board/input";
 import { loadBoard } from "./board/sdk";
@@ -47,6 +48,10 @@ async function main(): Promise<void> {
       game.configureMatch(scenarioId, playerFaction, opponent),
   });
   game = new Game(renderer, hud, onDevice);
+
+  // Per-player firing-range overlay toggles (one corner button per fleet). Each
+  // flips its own side's range fans on/off independently.
+  new RangeToggle((faction, enabled) => game.setRangeOverlay(faction, enabled));
 
   // Wire the OS pause overlay (Board hardware menu button). The PauseMenu is a
   // no-op driver in the browser; on a Board the game drives it across phase

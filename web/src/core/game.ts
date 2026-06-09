@@ -143,6 +143,12 @@ export class Game {
   private readonly control = new Map<Faction, ControlMode>();
   private readonly ai = new Map<Faction, FleetAI>();
 
+  // Per-player firing-range overlay toggle. Each side's commander can turn the
+  // range fans on/off for THEIR OWN ships independently (so each can plan
+  // without the other's rings cluttering the field). Driven by the two corner
+  // toggles in the HUD via setRangeOverlay; applied to ship views each frame.
+  private readonly rangeOverlay = new Map<Faction, boolean>();
+
   // ---- Baton of Command (per faction) -----------------------------------
   // Each human side commands via its own "Baton of Command": a marker placed on
   // the sea (a mouse click in the browser; a Glyph contact on Board hardware).
@@ -232,6 +238,12 @@ export class Game {
     this.pauseMenu = pauseMenu;
   }
 
+  /** Turns the firing-range overlay on/off for ONE side's ships (per-player
+   *  toggle). Applied to that fleet's ship views on the next frame. */
+  setRangeOverlay(faction: Faction, enabled: boolean): void {
+    this.rangeOverlay.set(faction, enabled);
+  }
+
   start(): void {
     seed(Math.floor(Math.random() * 0xffffffff));
 
@@ -301,6 +313,7 @@ export class Game {
     }
 
     this.refreshCommandVisuals();
+    this.refreshRangeVisuals();
     this.updateCourseVisuals();
     this.refreshBatonVisuals();
     this.refreshSetupVisuals();
@@ -1106,6 +1119,15 @@ export class Game {
     for (const ship of this.ships) {
       const commanded = commandedSet.has(ship) && ship.isAlive;
       (ship.view as ShipView | null)?.setCommanded(commanded, ship.faction);
+    }
+  }
+
+  /** Shows each ship's firing-range overlay iff its side's per-player toggle is
+   *  on and the ship is alive. */
+  private refreshRangeVisuals(): void {
+    for (const ship of this.ships) {
+      const on = this.rangeOverlay.get(ship.faction) === true && ship.isAlive;
+      (ship.view as ShipView | null)?.setRangeOverlay(on);
     }
   }
 
