@@ -14,7 +14,6 @@
 import { Renderer } from "./rendering/renderer";
 import { Hud } from "./ui/hud";
 import { Menu } from "./ui/menu";
-import { StartScreen } from "./ui/startScreen";
 import { RangeToggle } from "./ui/rangeToggle";
 import { Game } from "./core/game";
 import { createInputAdapter } from "./board/input";
@@ -73,14 +72,10 @@ async function main(): Promise<void> {
 
   game.start();
 
-  // Launch START SCREEN: the existing "How to Play" overlay is shown first. The
-  // player dismisses it by PLACING THEIR PIECE on the board (a Board contact on
-  // device; a pointer tap in the browser preview), which reveals a "Begin
-  // Battle" button. Tapping it opens the scenario menu — the normal path into a
-  // match (pick battle → side → opponent → Begin). The "?" help button keeps
-  // reopening the same content later.
-  const startScreen = new StartScreen(() => menu.open());
-  void startScreen.begin();
+  // Launch straight into the antique-chart menu: pick a battle, then land on the
+  // "choose your command" screen, which now carries the How-to-Play instructions
+  // alongside the side + opponent cards (no separate how-to-play start gate).
+  menu.open();
 
   const disposeInput = await createInputAdapter(canvas, (samples) =>
     game.onPointerSamples(samples),

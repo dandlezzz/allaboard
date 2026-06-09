@@ -77,6 +77,14 @@ export class Menu {
   private readonly howtoClose = el<HTMLButtonElement>("howto-close");
   private readonly battlesToggle = el<HTMLButtonElement>("battles-toggle");
 
+  // The single How-to-Play card grid (#howto). Its permanent home is the
+  // "choose your command" screen (#side-howto-slot); the corner "?" button
+  // borrows it into the overlay (#howto-overlay-slot) and returns it on close,
+  // so both places share one copy of the heavy illustrated markup.
+  private readonly howto = el("howto");
+  private readonly sideHowtoSlot = el("side-howto-slot");
+  private readonly howtoOverlaySlot = el("howto-overlay-slot");
+
   private selected: Scenario | null = null;
   private playerFaction: Faction = Faction.British;
   private opponent: Opponent = AIPersona.Standard;
@@ -89,6 +97,10 @@ export class Menu {
   });
 
   constructor(private readonly callbacks: MenuCallbacks) {
+    // Dock the How-to-Play cards on the command screen by default; the "?"
+    // overlay borrows them on demand.
+    this.sideHowtoSlot.appendChild(this.howto);
+
     this.buildGallery();
     this.buildOpponents();
 
@@ -301,6 +313,13 @@ export class Menu {
   }
 
   private setHowTo(open: boolean): void {
+    // Move the shared #howto grid into whichever home is active so the modal
+    // and the command screen never need two copies of the markup.
+    if (open) {
+      this.howtoOverlaySlot.appendChild(this.howto);
+    } else {
+      this.sideHowtoSlot.appendChild(this.howto);
+    }
     this.howtoOverlay.hidden = !open;
   }
 }

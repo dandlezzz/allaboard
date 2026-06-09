@@ -33,24 +33,17 @@
       <!-- In-canvas placement prompt (shown during the Setup phase) -->
       <div id="setup-status">Place your command piece to begin…</div>
 
-      <!-- How to play — dismissible modal, toggled by the corner "?" button. The
-           six illustrated cards are preserved verbatim from the old start screen. -->
+      <!-- How to play — the six illustrated cards. Their permanent home is the
+           "choose your command" menu screen (moved there at runtime into
+           #side-howto-slot); the corner "?" button re-parents this same node
+           into the overlay below so the help modal and the command-screen
+           instructions share one copy of the markup. -->
       <div id="howto-overlay" hidden>
         <div id="howto-panel">
           <button id="howto-close" type="button" aria-label="Close how to play">×</button>
           <div class="howto-heading">How to Play</div>
 
-          <!-- Start-screen gate (only shown when this overlay is the launch
-               screen). The player dismisses the how-to-play by PLACING THEIR
-               PIECE on the board (a Board contact on device; a tap in the
-               browser preview); that swaps the prompt for the "Begin Battle"
-               button, which starts the game. Hidden whenever the overlay is
-               reopened later via the "?" help button. -->
-          <div id="howto-start" hidden>
-            <div id="howto-start-prompt">Place your piece on the board to begin…</div>
-            <button id="howto-start-btn" type="button" class="chart-btn" hidden>Begin Battle ›</button>
-          </div>
-
+          <div id="howto-overlay-slot">
           <div id="howto" role="list" aria-label="How to play">
           <figure class="howto-card" role="listitem">
             <!-- Points of Sail: the in-game point-of-sail speed gauge (the same
@@ -470,6 +463,7 @@
             </figcaption>
           </figure>
           </div>
+          </div>
         </div>
       </div>
     </div>
@@ -499,20 +493,33 @@
           <div id="scenario-gallery" class="scenario-gallery"></div>
         </section>
 
-        <!-- Screen 2: choose your command + opponent -->
+        <!-- Screen 2: choose your command + opponent, with the How-to-Play
+             instructions alongside the selection cards. -->
         <section id="screen-side" class="menu-screen" hidden>
           <button id="side-back" type="button" class="chart-link">‹ Back to the battles</button>
           <h2 id="side-battle-name" class="chart-title"></h2>
           <div id="side-battle-meta" class="chart-subtitle"></div>
           <p id="side-battle-blurb" class="chart-blurb"></p>
 
-          <div class="section-label">Explanation of the Colours — choose your command</div>
-          <div id="side-select" class="side-select"></div>
+          <div class="command-layout">
+            <!-- Left column: the actual selection (side + opponent + begin) -->
+            <div class="command-selection">
+              <div class="section-label">Explanation of the Colours — choose your command</div>
+              <div id="side-select" class="side-select"></div>
 
-          <div class="section-label">Choose your opponent</div>
-          <div id="opponent-select" role="group" aria-label="Choose your opponent"></div>
+              <div class="section-label">Choose your opponent</div>
+              <div id="opponent-select" role="group" aria-label="Choose your opponent"></div>
 
-          <button id="confirm-battle" type="button" class="chart-btn">Begin the Battle ›</button>
+              <button id="confirm-battle" type="button" class="chart-btn">Begin the Battle ›</button>
+            </div>
+
+            <!-- Right column: the How-to-Play cards (#howto is moved in here at
+                 runtime; the corner "?" button borrows it back into its modal). -->
+            <aside class="command-howto">
+              <div class="section-label">How to Play</div>
+              <div id="side-howto-slot"></div>
+            </aside>
+          </div>
         </section>
       </div>
     </div>
