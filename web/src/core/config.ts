@@ -17,8 +17,9 @@ export const BaseSpeedMultiplier = 0.15;
 /** Global tuning multiplier on the base broadside gun range of every ship.
  *  Reduced 2 → 1.5 (25% shorter range): fleets must close more to engage. Range
  *  still dwarfs a hull length and fits the arena (First Rate gunRange = 40 × 10 ×
- *  1.5 = 600 < arena width 1800). */
-export const BaseRangeMultiplier = 1.5;
+ *  1.5 = 600 < arena width 1800). Further × 0.8 cuts every ship's effective fire
+ *  range by 1/5th (fleets must close even more to engage); damage is untouched. */
+export const BaseRangeMultiplier = 1.5 * 0.8;
 
 /** Half-extent of the playable sea along the LONG axis (world X). */
 export const ArenaHalfX = 90 * ShipScale;
@@ -44,8 +45,9 @@ export const ColumnGap = 2 * ShipScale;
  *  radius, sprite scale, the collision capsule, the command bubble and spawn
  *  spacing all track `length`, so everything scales coherently while
  *  arena/range/speed (ShipScale) are unchanged; the 8-ship bottom-corner columns
- *  still fit on-screen and don't overlap at this size. */
-export const HullSizeBoost = 1.3125 * 0.75 * 0.75 * 1.25;
+ *  still fit on-screen and don't overlap at this size. Final × 0.75 shrinks every
+ *  ship to 0.75 of its former footprint (visual + collision capsule together). */
+export const HullSizeBoost = 1.3125 * 0.75 * 0.75 * 1.25 * 0.75;
 
 // ---- Wind ----
 
