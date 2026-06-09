@@ -57,16 +57,14 @@ secrets** (Settings → Secrets and variables → Actions):
 To get the org/project IDs locally: `cd web && npx vercel link` (creates the
 gitignored `web/.vercel/project.json`).
 
-## Make the repo live (manual, one-time)
+## Remote
 
-`boarders` is not yet connected to a remote. After committing:
+The repo lives at [`dandlezzz/broadsides`](https://github.com/dandlezzz/broadsides)
+(`origin` → `git@github.com:dandlezzz/broadsides.git`). If you ever need to
+re-add the remote:
 
 ```bash
-# Create the GitHub repo and push (uses GitHub CLI; adjust owner/visibility):
-gh repo create <owner>/boarders --private --source=. --remote=origin --push
-
-# …or manually:
-git remote add origin git@github.com:<owner>/boarders.git
+git remote add origin git@github.com:dandlezzz/broadsides.git
 git push -u origin main
 ```
 
