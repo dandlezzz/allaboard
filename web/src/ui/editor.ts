@@ -94,9 +94,6 @@ export class Editor {
   private addVertexCandidate: { x: number; z: number } | null = null;
   private dragMoved = false;
 
-  /** The selected-ship inspector's heading slider (synced during rotate drag). */
-  private inspectorHeading: HTMLInputElement | null = null;
-
   constructor(private readonly callbacks: EditorCallbacks) {
     this.root = document.createElement("div");
     this.root.id = "editor";
@@ -373,7 +370,6 @@ export class Editor {
 
   private renderInspector(): void {
     this.inspectorHost.replaceChildren();
-    this.inspectorHeading = null;
     const ref = this.selectedShip;
     if (this.mode !== "ships" || !ref) {
       this.inspectorHost.hidden = true;
@@ -408,13 +404,6 @@ export class Editor {
       this.update();
     });
     fields.appendChild(labeled("Type", type));
-
-    const heading = sliderInput(Math.round(normDeg(ship.headingDeg)), { min: 0, max: 359, step: 1 }, (v) => {
-      ship.headingDeg = v;
-      this.refreshPreview();
-    });
-    this.inspectorHeading = heading.input;
-    fields.appendChild(labeled("Heading °", heading.wrap));
 
     const del = el("button", "del-ship") as HTMLButtonElement;
     del.type = "button";
@@ -713,10 +702,6 @@ export class Editor {
         const s = this.draft[this.drag.side].ships[this.drag.index];
         if (s) {
           s.headingDeg = Math.round(normDeg(vectorToHeading({ x: wx - s.pos.x, z: wz - s.pos.z })));
-          if (this.inspectorHeading) {
-            this.inspectorHeading.value = String(s.headingDeg);
-            this.inspectorHeading.dispatchEvent(new Event("sync"));
-          }
         }
       } else if (this.drag.kind === "vertex") {
         const shape = this.draft.land?.[this.drag.shape];
@@ -893,34 +878,6 @@ function numberRow(
     onInput(clamp(Number(input.value), opts.min, opts.max));
   });
   return labeled(label, input);
-}
-
-/** A range slider plus a live readout; returns the wrapper and the input. */
-function sliderInput(
-  value: number,
-  opts: { min: number; max: number; step: number },
-  onInput: (v: number) => void,
-): { wrap: HTMLElement; input: HTMLInputElement } {
-  const wrap = el("div", "slider-wrap");
-  const input = document.createElement("input");
-  input.type = "range";
-  input.min = String(opts.min);
-  input.max = String(opts.max);
-  input.step = String(opts.step);
-  input.value = String(value);
-  const readout = el("span", "row-readout", String(value));
-  const sync = (): void => {
-    readout.textContent = input.value;
-  };
-  input.addEventListener("input", () => {
-    sync();
-    onInput(Number(input.value));
-  });
-  // Custom "sync" event lets a drag update the slider without re-firing onInput.
-  input.addEventListener("sync", sync);
-  wrap.appendChild(input);
-  wrap.appendChild(readout);
-  return { wrap, input };
 }
 
 function labeled(label: string, control: HTMLElement): HTMLElement {

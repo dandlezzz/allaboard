@@ -5,10 +5,12 @@ description: Automatically deploy completed work to Daniel's Board hardware afte
 
 # Auto-deploy after completing a task
 
-When you finish a unit of work the user asked for in this repo and it builds
-cleanly, **deploy it to the Board automatically** — don't wait for a separate
-"deploy it" instruction. This keeps the on-Board build in sync with the latest
-work.
+**Always redeploy to the Board after you make a change.** When you finish any
+unit of work the user asked for in this repo and it builds cleanly, **deploy it
+to the Board automatically** — don't wait for a separate "deploy it"
+instruction, and don't ask first. This is a standing instruction from Daniel:
+every change that builds gets deployed. This keeps the on-Board build in sync
+with the latest work.
 
 ## When to auto-deploy
 
@@ -52,8 +54,11 @@ build passes.
 - The work is explicitly marked WIP or "don't deploy", or the user asked you
   to hold off / not deploy. Always respect an explicit instruction to wait.
 
-When in doubt on a borderline case, finish the work and ask before deploying
-rather than surprising the user.
+When in doubt on a borderline case where real app code changed and the build
+passes, **default to deploying** rather than asking — Daniel has asked to always
+redeploy after a change. Only hold off for the explicit guardrails above (failed
+build, no-op/docs-only change, pure investigation, or an explicit "don't
+deploy").
 
 ## Defers to
 

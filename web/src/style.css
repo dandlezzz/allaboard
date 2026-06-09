@@ -1113,14 +1113,6 @@ body.menu-open .range-toggle {
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
 }
-.slider-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
 .wind-control {
   display: flex;
   align-items: center;
